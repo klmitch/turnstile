@@ -120,7 +120,7 @@ class Limit(object):
         self.uri = uri
         self._value = value
         self._unit = get_unit_value(unit)
-        self.verbs = verbs or []
+        self.verbs = [v.upper() for v in verbs] or []
 
         # Sanity-check value and unit
         if self._value <= 0:
