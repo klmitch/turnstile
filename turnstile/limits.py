@@ -227,6 +227,12 @@ class Limit(object):
 
 
 class Bucket(object):
+    """
+    Represent a "bucket."  A bucket tracks the necessary values for
+    application of the leaky bucket algorithm under the control of a
+    limit specification.
+    """
+
     attrs = set(['last', 'next', 'level'])
 
     def __init__(self, limit, key, last=None, next=None, level=0):
