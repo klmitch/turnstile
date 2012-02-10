@@ -220,10 +220,10 @@ class Limit(object):
     def increment(self):
         """
         Retrieve the amount by which a request increases the water
-        level.
+        level in the bucket.
         """
 
-        return self.unit_value / self.value
+        return float(self.unit_value) / float(self.value)
 
 
 class Bucket(object):
@@ -297,8 +297,14 @@ class Bucket(object):
         return 0.0
 
     @property
-    def remaining(self):
-        """Return remaining level."""
+    def messages(self):
+        """Return remaining messages before limiting."""
 
         return int(math.floor(((self.limit.unit_value - self.level) /
                                self.limit.unit_value) * self.limit.value))
+
+    @property
+    def expire(self):
+        """Return the estimated expiration time of this bucket."""
+
+        return self.last + math.ceil(self.level)
