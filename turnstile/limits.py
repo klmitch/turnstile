@@ -1,7 +1,6 @@
 import math
 import time
 
-from turnstile import database
 from turnstile import utils
 
 
@@ -247,8 +246,8 @@ class Limit(object):
             return (bucket, delay)
 
         # Perform a safe fetch and update of the bucket
-        bucket, delay = database.safe_update(self.db, key, self.bucket_class,
-                                             process_bucket, self, key)
+        bucket, delay = self.db.safe_update(key, self.bucket_class,
+                                            process_bucket, self, key)
 
         # If we found a delay, store the particulars in the
         # environment; this will later be sorted and an error message
