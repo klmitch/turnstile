@@ -47,6 +47,12 @@ def get_unit_name(value):
     return _units_map.get(value, str(value))
 
 
+class DeferLimit(Exception):
+    """Exception raised if limit should not be considered."""
+
+    pass
+
+
 class LimitMeta(type):
     """
     Metaclass for limits.
@@ -67,18 +73,29 @@ class LimitMeta(type):
         # Add it to the namespace
         namespace['_limit_full_name'] = full_name
 
-        # Augment the attrs set...
-        if 'attrs' in namespace:
-            attrs = namespace['attrs']
+        attrs = namespace.get('attrs')
+        skip = namespace.get('skip')
+        if attrs is not None or skip is not None:
             for base in bases:
-                # If a given base class has 'attrs', union with that
-                # set of attributes
-                try:
-                    attrs |= getattr(base, 'attrs')
-                except AttributeError:
-                    # Ignore it if the base class doesn't have
-                    # 'attrs'...
-                    pass
+                if attrs is not None:
+                    # If a given base class has 'attrs', union with
+                    # that set of attributes
+                    try:
+                        attrs |= getattr(base, 'attrs')
+                    except AttributeError:
+                        # Ignore it if the base class doesn't have
+                        # 'attrs'...
+                        pass
+
+                if skip is not None:
+                    # If a given base class has 'skip', union with
+                    # that set of skipped parameters
+                    try:
+                        skip |= getattr(base, 'skip')
+                    except AttributeError:
+                        # Ignore it if the base class doesn't have
+                        # 'skip'...
+                        pass
 
         # Create the class
         cls = super(LimitMeta, mcs).__new__(mcs, name, bases, namespace)
@@ -98,9 +115,14 @@ class Limit(object):
 
     __metaclass__ = LimitMeta
 
-    attrs = set(['uri', 'value', 'unit', 'verbs', 'requirements'])
+    attrs = set(['uri', 'value', 'unit', 'verbs', 'requirements',
+                 'continue_scan'])
+    skip = set(['limit'])
 
-    def __init__(self, uri, value, unit, verbs=None, requirements=None):
+    bucket_class = Bucket
+
+    def __init__(self, uri, value, unit, verbs=None, requirements=None,
+                 continue_scan=True):
         """
         Initialize a new limit.
 
@@ -119,6 +141,13 @@ class Limit(object):
                              regular expressions.  This allows the URI
                              to be further restricted during the
                              matching phase.
+        :param continue_scan: If True and the limit matches the
+                              request (and processing isn't deferred
+                              due to filter() raising DeferLimit), the
+                              remaining limits will be scanned.  This
+                              defaults to True, but may be set to
+                              False to inhibit follow-on limits from
+                              being applied.
         """
 
         self.uri = uri
@@ -126,6 +155,7 @@ class Limit(object):
         self._unit = get_unit_value(unit)
         self.verbs = [v.upper() for v in verbs] or []
         self.requirements = requirements or {}
+        self.continue_scan = continue_scan
 
         # Sanity-check value and unit
         if self._value <= 0:
@@ -168,6 +198,67 @@ class Limit(object):
             result[attr] = getattr(self, attr)
 
         return result
+
+    def key(self, params):
+        """
+        Given a set of parameters describing the request, compute a
+        key for accessing the corresponding bucket.
+
+        :param params: A dictionary of parameters describing the
+                       request; this is likely based on the dictionary
+                       from routes.
+        """
+
+        # Build up the key in pieces
+        parts = [self._limit_full_name]
+        parts.extend('%s=%s' % (k, params[k])
+                     for k in sorted(params)
+                     if k not in self.skip)
+        return ':'.join(parts)
+
+    def _filter(self, environ, params):
+        """
+        Performs final filtering of the request to determine if this
+        limit applies.  Returns False if the limit does not apply or
+        if the call should not be limited, or True to apply the limit.
+        """
+
+        # First, we need to set up any additional params required to
+        # get the bucket.  If the DeferLimit exception is thrown, no
+        # further processing is performed.
+        try:
+            additional = self.filter(environ, params) or {}
+        except DeferLimit:
+            return False
+
+        # Compute the bucket key
+        key = self.key(params)
+
+        # Update the parameters...
+        params.update(additional)
+
+        # Look up or create the bucket
+        bucket = self.get_bucket(self, key)
+
+        # Determine the delay for the message
+        delay = bucket.delay(params)
+        if delay is not None:
+            environ.setdefault('turnstile.delay', [])
+            enviren['turnstile.delay'].append((delay, limit, bucket))
+
+        return not self.continue_scan
+
+    def filter(self, environ, params):
+        """
+        Performs final route filtering.  Should add additional
+        parameters to the `params` dict that should be used when
+        looking up the bucket.  Parameters that should be added to
+        params, but which should not be used to look up the bucket,
+        may be returned as a dictionary.  If this limit should not be
+        applied to this request, raise DeferLimit.
+        """
+
+        pass
 
     @property
     def value(self):
@@ -239,6 +330,7 @@ class Bucket(object):
     """
 
     attrs = set(['last', 'next', 'level'])
+    eps = 0.1
 
     def __init__(self, limit, key, last=None, next=None, level=0):
         """
@@ -276,7 +368,7 @@ class Bucket(object):
 
         return result
 
-    def delay(self):
+    def delay(self, params):
         """Determine delay until next request."""
 
         now = time.time()
@@ -296,7 +388,7 @@ class Bucket(object):
 
         # Are we too full?
         difference = self.level + self.limit.increment - self.limit.unit_value
-        if difference > 0:
+        if difference >= self.eps:
             self.next = now + difference
             return difference
 
@@ -305,7 +397,7 @@ class Bucket(object):
         self.level += self.limit.increment
         self.next = now
 
-        return 0.0
+        return None
 
     @property
     def messages(self):
