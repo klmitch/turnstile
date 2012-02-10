@@ -98,9 +98,9 @@ class Limit(object):
 
     __metaclass__ = LimitMeta
 
-    attrs = set(['uri', 'value', 'unit', 'verbs'])
+    attrs = set(['uri', 'value', 'unit', 'verbs', 'requirements'])
 
-    def __init__(self, uri, value, unit, verbs=None):
+    def __init__(self, uri, value, unit, verbs=None, requirements=None):
         """
         Initialize a new limit.
 
@@ -115,12 +115,17 @@ class Limit(object):
         :param verbs: List of HTTP verbs the limit should be
                       considered for.  If empty or not specified, all
                       hits against the specified URI will be limited.
+        :param requirements: Dictionary mapping keys in the URI to
+                             regular expressions.  This allows the URI
+                             to be further restricted during the
+                             matching phase.
         """
 
         self.uri = uri
         self._value = value
         self._unit = get_unit_value(unit)
         self.verbs = [v.upper() for v in verbs] or []
+        self.requirements = requirements or {}
 
         # Sanity-check value and unit
         if self._value <= 0:
