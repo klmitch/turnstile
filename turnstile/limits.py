@@ -318,4 +318,5 @@ class Bucket(object):
     def expire(self):
         """Return the estimated expiration time of this bucket."""
 
-        return self.last + math.ceil(self.level)
+        # Round up and convert to an int
+        return int(math.ceil(self.last) + math.ceil(self.level))
