@@ -120,14 +120,14 @@ class Bucket(object):
         self.level = max(self.level - leaked, 0)
 
         # Are we too full?
-        difference = self.level + self.limit.increment - self.limit.unit_value
+        difference = self.level + self.limit.cost - self.limit.unit_value
         if difference >= self.eps:
             self.next = now + difference
             return difference
 
         # OK, raise the water level and set next to an appropriate
         # value
-        self.level += self.limit.increment
+        self.level += self.limit.cost
         self.next = now
 
         return None
@@ -456,7 +456,7 @@ class Limit(object):
         self._unit = int(value)
 
     @property
-    def increment(self):
+    def cost(self):
         """
         Retrieve the amount by which a request increases the water
         level in the bucket.

@@ -70,7 +70,7 @@ class TestBucket(tests.TestCase):
     def test_delay_initial(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 
-        limit = FakeLimit(increment=10.0, unit_value=100.0)
+        limit = FakeLimit(cost=10.0, unit_value=100.0)
         bucket = limits.Bucket('db', limit, 'key')
         result = bucket.delay({})
 
@@ -82,7 +82,7 @@ class TestBucket(tests.TestCase):
     def test_delay_expired(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 
-        limit = FakeLimit(increment=10.0, unit_value=100.0)
+        limit = FakeLimit(cost=10.0, unit_value=100.0)
         bucket = limits.Bucket('db', limit, 'key', last=999990.0, level=10.0)
         result = bucket.delay({})
 
@@ -94,7 +94,7 @@ class TestBucket(tests.TestCase):
     def test_delay_overlap(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 
-        limit = FakeLimit(increment=10.0, unit_value=100.0)
+        limit = FakeLimit(cost=10.0, unit_value=100.0)
         bucket = limits.Bucket('db', limit, 'key', last=999995.0, level=10.0)
         result = bucket.delay({})
 
@@ -106,7 +106,7 @@ class TestBucket(tests.TestCase):
     def test_delay_overlimit(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 
-        limit = FakeLimit(increment=10.0, unit_value=100.0)
+        limit = FakeLimit(cost=10.0, unit_value=100.0)
         bucket = limits.Bucket('db', limit, 'key', last=999995.0, level=100.0)
         result = bucket.delay({})
 
@@ -118,7 +118,7 @@ class TestBucket(tests.TestCase):
     def test_delay_undereps(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 
-        limit = FakeLimit(increment=10.0, unit_value=100.0)
+        limit = FakeLimit(cost=10.0, unit_value=100.0)
         bucket = limits.Bucket('db', limit, 'key', last=999995.0, level=95.1)
         result = bucket.delay({})
 
