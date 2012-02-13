@@ -41,7 +41,7 @@ class TurnstileMiddleware(object):
 
         # Next, let's configure redis
         redis_args = self.config.get('redis', {})
-        self.db, self.mapper_daemon = database.initialize(self, redis_args)
+        self.db, self.control_daemon = database.initialize(self, redis_args)
 
     def __call__(self, environ, start_response):
         # Run the request preprocessors
