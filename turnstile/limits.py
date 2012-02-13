@@ -201,6 +201,44 @@ class Limit(object):
 
         return result
 
+    def _route(self, mapper):
+        """
+        Set up the route(s) corresponding to the limit.  This controls
+        which limits are checked against the request.
+
+        :param mapper: The routes.Mapper object to add the route to.
+        """
+
+        # Build up the keyword arguments to feed to connect()
+        kwargs = dict(limit=self, conditions=dict(function=self._filter))
+
+        # Restrict the verbs
+        if self.verbs:
+            kwargs['conditions']['method'] = self.verbs
+
+        # Add requirements, if provided
+        if self.requirements:
+            kwargs['requirements'] = self.requirements
+
+        # Hook to allow subclasses to override arguments to connect()
+        self.route(kwargs)
+
+        # Create the route
+        mapper.connect(None, self.uri, **kwargs)
+
+    def route(self, route_args):
+        """
+        Provides a hook by which additional arguments may be added to
+        the route.  For most limits, this should not be needed; use
+        the filter() method instead.
+
+        :param route_args: A dictionary of keyword arguments that will
+                           be passed to routes.Mapper.connect().  This
+                           dictionary should be modified in place.
+        """
+
+        pass
+
     def key(self, params):
         """
         Given a set of parameters describing the request, compute a

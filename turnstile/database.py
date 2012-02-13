@@ -199,9 +199,9 @@ class ControlDaemon(object):
                       for lim in self._db.zrange(key, 0, -1)]
 
             # Build the routes mapper
-            mapper = routes.Mapper()
+            mapper = routes.Mapper(register=False)
             for lim in limits:
-                lim.route(mapper)
+                lim._route(mapper)
 
             # Install it
             self._middleware.mapper = mapper
