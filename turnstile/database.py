@@ -15,17 +15,18 @@ LOG = logging.getLogger('turnstile')
 
 
 class TurnstileRedis(redis.StrictRedis):
-    def safe_update(self, key, klass, proc, *args):
+    def safe_update(self, key, klass, update, *args):
         """
         Safely creates or updates an object in the database.
 
         :param key: The key the object should be looked up under.
         :param klass: The Python class corresponding to the object.
-        :param proc: A callable taking a single argument--the object being
-                     updated.  The return value of this callable will
-                     become the return value of the safe_update()
-                     function.  Note that the callable may be called
-                     multiple times.
+        :param update: A callable taking a single argument--the object
+                       being updated.  The return value of this
+                       callable will become the return value of the
+                       safe_update() function.  Note that the callable
+                       may be called multiple times for a single
+                       update.
 
         If the object does not currently exist in the database, its
         constructor will be called with the database as the first
@@ -35,18 +36,18 @@ class TurnstileRedis(redis.StrictRedis):
         parameter, followed by the remaining positional arguments,
         followed by a dictionary.
 
-        Once the object is built, the processor function is called; its
+        Once the object is built, the update function is called; its
         return value will be saved and the object will be serialized back
         into the database (the object must have a dehydrate() instance
         method taking no parameters and returning a dictionary).  If the
         object has an 'expire' attribute, the key will be set to expire at
         the time given by 'expire'.
 
-        Note that if the key is updated before processing is complete, the
-        object will be reloaded and the processor function called again.
-        This ensures that the processing is atomic, but means that the
-        processor function must have no side effects other than changes to
-        the object it is passed.
+        Note that if the key is updated before processing is complete,
+        the object will be reloaded and the update function called
+        again.  This ensures that the update is atomic, but means that
+        the update function must have no side effects other than
+        changes to the object it is passed.
         """
 
         # Do this in a transaction
@@ -67,7 +68,7 @@ class TurnstileRedis(redis.StrictRedis):
                     pipe.multi()
 
                     # Call the processor...
-                    result = proc(obj)
+                    result = update(obj)
 
                     # Save the object back to the database
                     pipe.set(key, msgpack.dumps(obj.dehydrate()))
