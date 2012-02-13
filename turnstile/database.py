@@ -89,12 +89,71 @@ class TurnstileRedis(redis.StrictRedis):
         return result
 
 
-def initialize():
+def initialize(middleware, config):
     """
     Initialize a connection to the Redis database.
     """
 
-    pass
+    # Extract relevant connection information from the configuration
+    kwargs = {}
+    for cfg_var, type_ in [('host', str), ('port', int), ('db', int),
+                           ('password', str), ('socket_timeout', int),
+                           ('unix_socket_path', str)]:
+        if cfg_var in config:
+            kwargs[cfg_var] = type_(config[cfg_var])
+
+    # Make sure we have at a minimum the hostname
+    if 'host' not in kwargs and 'unix_socket_path' not in kwargs:
+        raise redis.ConnectionError("No host specified for redis database")
+
+    # Look up the connection pool configuration
+    cpool_class = None
+    cpool = {}
+    for key, value in config:
+        if key.startswith('connection_pool.'):
+            _dummy, _sep, varname = key.partition('.')
+            if varname == 'connection_class':
+                cpool[varname] = utils.import_class(value)
+            elif varname == 'max_connections':
+                cpool[varname] = int(value)
+            elif varname == 'parser_class':
+                cpool[varname] = utils.import_class(value)
+            else:
+                cpool[varname] = value
+    if cpool:
+        cpool_class = redis.ConnectionPool
+
+    # Use custom connection pool class if requested...
+    if 'connection_pool' in config:
+        cpool_class = utils.import_class(config['connection_pool'])
+
+    # If we're using a connection pool, we'll need to pass the keyword
+    # arguments to that instead of to redis
+    if cpool_class:
+        cpool.update(kwargs)
+
+        # Use a custom connection class?
+        if 'connection_class' not in cpool:
+            if 'unix_socket_path' in cpool:
+                if 'host' in cpool:
+                    del cpool['host']
+                if 'port' in cpool:
+                    del cpool['port']
+                cpool['connection_class'] = redis.UnixDomainSocketConnection
+            else:
+                cpool['connection_class'] = redis.Connection
+
+        # Build the connection pool to use and set up to pass it into
+        # the redis constructor...
+        kwargs = dict(connection_pool=cpool_class(**cpool))
+
+    # Build the database
+    db = TurnstileRedis(**kwargs)
+
+    # Set up the control daemon thread
+    daemon = ControlDaemon(db, middleware, config)
+
+    return db, daemon
 
 
 class ControlDaemon(object):
