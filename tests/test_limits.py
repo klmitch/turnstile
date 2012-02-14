@@ -21,7 +21,12 @@ class TestUnits(tests.TestCase):
 
         self.assertEqual(limits.get_unit_value('31337'), 31337)
         self.assertEqual(limits.get_unit_value(31337), 31337)
-        self.assertEqual(limits.get_unit_value(3133.7), 3133.7)
+
+        with self.assertRaises(TypeError):
+            val = limits.get_unit_value(3133.7)
+
+        with self.assertRaises(KeyError):
+            value = limits.get_unit_value('nosuchunit')
 
     def test_unit_name(self):
         for unit, value in [('second', 1), ('minute', 60), ('hour', 3600),
@@ -70,7 +75,7 @@ class TestBucket(tests.TestCase):
     def test_delay_initial(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 
-        limit = FakeLimit(cost=10.0, unit_value=100.0)
+        limit = FakeLimit(cost=10.0, unit_value=100)
         bucket = limits.Bucket('db', limit, 'key')
         result = bucket.delay({})
 
@@ -82,7 +87,7 @@ class TestBucket(tests.TestCase):
     def test_delay_expired(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 
-        limit = FakeLimit(cost=10.0, unit_value=100.0)
+        limit = FakeLimit(cost=10.0, unit_value=100)
         bucket = limits.Bucket('db', limit, 'key', last=999990.0, level=10.0)
         result = bucket.delay({})
 
@@ -94,7 +99,7 @@ class TestBucket(tests.TestCase):
     def test_delay_overlap(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 
-        limit = FakeLimit(cost=10.0, unit_value=100.0)
+        limit = FakeLimit(cost=10.0, unit_value=100)
         bucket = limits.Bucket('db', limit, 'key', last=999995.0, level=10.0)
         result = bucket.delay({})
 
@@ -106,7 +111,7 @@ class TestBucket(tests.TestCase):
     def test_delay_overlimit(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 
-        limit = FakeLimit(cost=10.0, unit_value=100.0)
+        limit = FakeLimit(cost=10.0, unit_value=100)
         bucket = limits.Bucket('db', limit, 'key', last=999995.0, level=100.0)
         result = bucket.delay({})
 
@@ -118,7 +123,7 @@ class TestBucket(tests.TestCase):
     def test_delay_undereps(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 
-        limit = FakeLimit(cost=10.0, unit_value=100.0)
+        limit = FakeLimit(cost=10.0, unit_value=100)
         bucket = limits.Bucket('db', limit, 'key', last=999995.0, level=95.1)
         result = bucket.delay({})
 
@@ -159,6 +164,43 @@ class LimitTest1(limits.Limit):
 class LimitTest2(limits.Limit):
     attrs = set(['test_attr'])
     skip = set(['test_skip'])
+
+    def route(self, route_args):
+        route_args['route_add'] = 'LimitTest2'
+
+    def filter(self, environ, params):
+        if 'defer' in environ:
+            raise limits.DeferLimit
+        params['filter_add'] = 'LimitTest2_direct'
+        return dict(additional='LimitTest2_additional')
+
+
+class FakeMapper(object):
+    def __init__(self):
+        self.routes = []
+
+    def connect(self, name, uri, **kwargs):
+        self.routes.append((name, uri, kwargs))
+
+
+class FakeBucket(object):
+    def __init__(self, delay):
+        self._params = None
+        self._delay = delay
+
+    def delay(self, params):
+        self._params = params
+        return self._delay
+
+
+class FakeDatabase(object):
+    def __init__(self, bucket):
+        self.update = None
+        self.bucket = bucket
+
+    def safe_update(self, key, klass, update, *args):
+        self.update = (key, klass, update, args)
+        return update(self.bucket)
 
 
 class TestLimitMeta(tests.TestCase):
@@ -206,33 +248,33 @@ class TestLimit(tests.TestCase):
         self.assertEqual(limit.db, 'db')
         self.assertEqual(limit.uri, 'uri')
         self.assertEqual(limit._value, 10)
-        self.assertEqual(limit._unit, 1.0)
+        self.assertEqual(limit._unit, 1)
         self.assertEqual(limit.verbs, [])
         self.assertEqual(limit.requirements, {})
         self.assertEqual(limit.continue_scan, True)
 
     def test_init_bad_value(self):
         with self.assertRaises(ValueError):
-            limit = limits.Limit('db', 'uri', 0, 1.0)
+            limit = limits.Limit('db', 'uri', 0, 1)
 
     def test_init_bad_unit(self):
         with self.assertRaises(ValueError):
-            limit = limits.Limit('db', 'uri', 10, 0.0)
+            limit = limits.Limit('db', 'uri', 10, 0)
 
     def test_init_verbs(self):
-        limit = limits.Limit('db', 'uri', 10, 1.0,
+        limit = limits.Limit('db', 'uri', 10, 1,
                              verbs=['get', 'PUT', 'Head'])
 
         self.assertEqual(limit.verbs, ['GET', 'PUT', 'HEAD'])
 
     def test_init_requirements(self):
         expected = dict(foo=r'\..*', bar=r'.\.*')
-        limit = limits.Limit('db', 'uri', 10, 1.0, requirements=expected)
+        limit = limits.Limit('db', 'uri', 10, 1, requirements=expected)
 
         self.assertEqual(limit.requirements, expected)
 
     def test_init_continue_scan(self):
-        limit = limits.Limit('db', 'uri', 10, 1.0, continue_scan=False)
+        limit = limits.Limit('db', 'uri', 10, 1, continue_scan=False)
 
         self.assertEqual(limit.continue_scan, False)
 
@@ -268,3 +310,281 @@ class TestLimit(tests.TestCase):
         limit = LimitTest1('db', **exemplar)
 
         self.assertEqual(limit.dehydrate(), expected)
+
+    def test_route_basic(self):
+        mapper = FakeMapper()
+        limit = limits.Limit('db', 'uri', 10, 1)
+        limit._route(mapper)
+
+        kwargs = dict(conditions=dict(function=limit._filter))
+        self.assertEqual(mapper.routes, [(None, 'uri', kwargs)])
+
+    def test_route_verbs(self):
+        mapper = FakeMapper()
+        limit = limits.Limit('db', 'uri', 10, 1, verbs=['get', 'post'])
+        limit._route(mapper)
+
+        kwargs = dict(conditions=dict(
+                function=limit._filter,
+                method=['GET', 'POST'],
+                ))
+        self.assertEqual(mapper.routes, [(None, 'uri', kwargs)])
+
+    def test_route_requirements(self):
+        mapper = FakeMapper()
+        limit = limits.Limit('db', 'uri', 10, 1,
+                             requirements=dict(foo=r'\..*', bar=r'.\.*'))
+        limit._route(mapper)
+
+        kwargs = dict(
+            conditions=dict(function=limit._filter),
+            requirements=dict(foo=r'\..*', bar=r'.\.*'),
+            )
+        self.assertEqual(mapper.routes, [(None, 'uri', kwargs)])
+
+    def test_route_hook(self):
+        mapper = FakeMapper()
+        limit = LimitTest2('db', 'uri', 10, 1)
+        limit._route(mapper)
+
+        kwargs = dict(
+            conditions=dict(function=limit._filter),
+            route_add='LimitTest2',
+            )
+        self.assertEqual(mapper.routes, [(None, 'uri', kwargs)])
+
+    def test_key(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+        params = dict(a=1, b=2, c=3, d=4, e=5, f=6)
+        key = limit.key(params)
+
+        self.assertEqual(key, 'turnstile.limits:Limit/a=1/b=2/c=3/d=4/e=5/f=6')
+
+    def test_filter_basic(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = limits.Limit(db, 'uri', 10, 1)
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        key = 'turnstile.limits:Limit/param=test'
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, {})
+        self.assertEqual(params, dict(param='test'))
+        self.assertEqual(db.update[0], key)
+        self.assertEqual(db.update[1], limits.Bucket)
+        self.assertEqual(db.update[3], (limit, key))
+        self.assertEqual(id(bucket._params), id(params))
+
+    def test_filter_defer(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = LimitTest2(db, 'uri', 10, 1)
+        environ = dict(defer=True)
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, dict(defer=True))
+        self.assertEqual(params, dict(param='test'))
+        self.assertEqual(db.update, None)
+        self.assertEqual(bucket._params, None)
+
+    def test_filter_hook(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = LimitTest2(db, 'uri', 10, 1)
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        key = ('tests.test_limits:LimitTest2/'
+               'filter_add=LimitTest2_direct/param=test')
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, {})
+        self.assertEqual(params, dict(
+                param='test',
+                filter_add='LimitTest2_direct',
+                additional='LimitTest2_additional',
+                ))
+        self.assertEqual(db.update[0], key)
+        self.assertEqual(db.update[1], limits.Bucket)
+        self.assertEqual(db.update[3], (limit, key))
+        self.assertEqual(id(bucket._params), id(params))
+
+    def test_filter_delay(self):
+        bucket = FakeBucket(10)
+        db = FakeDatabase(bucket)
+        limit = limits.Limit(db, 'uri', 10, 1)
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        key = 'turnstile.limits:Limit/param=test'
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, {
+                'turnstile.delay': [(10, limit, bucket)],
+                })
+        self.assertEqual(params, dict(param='test'))
+        self.assertEqual(db.update[0], key)
+        self.assertEqual(db.update[1], limits.Bucket)
+        self.assertEqual(db.update[3], (limit, key))
+        self.assertEqual(id(bucket._params), id(params))
+
+    def test_filter_continue_defer(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = LimitTest2(db, 'uri', 10, 1, continue_scan=False)
+        environ = dict(defer=True)
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, dict(defer=True))
+        self.assertEqual(params, dict(param='test'))
+        self.assertEqual(db.update, None)
+        self.assertEqual(bucket._params, None)
+
+    def test_filter_continue_delay(self):
+        bucket = FakeBucket(10)
+        db = FakeDatabase(bucket)
+        limit = limits.Limit(db, 'uri', 10, 1, continue_scan=False)
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        key = 'turnstile.limits:Limit/param=test'
+
+        self.assertEqual(result, True)
+        self.assertEqual(environ, {
+                'turnstile.delay': [(10, limit, bucket)],
+                })
+        self.assertEqual(params, dict(param='test'))
+        self.assertEqual(db.update[0], key)
+        self.assertEqual(db.update[1], limits.Bucket)
+        self.assertEqual(db.update[3], (limit, key))
+        self.assertEqual(id(bucket._params), id(params))
+
+    def test_filter_continue_no_delay(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = limits.Limit(db, 'uri', 10, 1, continue_scan=False)
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        key = 'turnstile.limits:Limit/param=test'
+
+        self.assertEqual(result, True)
+        self.assertEqual(environ, {})
+        self.assertEqual(params, dict(param='test'))
+        self.assertEqual(db.update[0], key)
+        self.assertEqual(db.update[1], limits.Bucket)
+        self.assertEqual(db.update[3], (limit, key))
+        self.assertEqual(id(bucket._params), id(params))
+
+    def test_value_get(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+
+        self.assertEqual(limit.value, 10)
+
+    def test_value_set(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+        limit.value = 20
+
+        self.assertEqual(limit._value, 20)
+
+    def test_value_set_zero(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+
+        with self.assertRaises(ValueError):
+            limit.value = 0
+
+    def test_value_set_negative(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+
+        with self.assertRaises(ValueError):
+            limit.value = -1
+
+    def test_unit_value_get(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+
+        self.assertEqual(limit.unit_value, 1)
+
+    def test_unit_value_set(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+        limit.unit_value = 60
+
+        self.assertEqual(limit._unit, 60)
+
+    def test_unit_value_set_zero(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+
+        with self.assertRaises(ValueError):
+            limit.unit_value = 0
+
+    def test_unit_value_set_negative(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+
+        with self.assertRaises(ValueError):
+            limit.unit_value = -1
+
+    def test_unit_get(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+
+        for unit, value in [('second', 1), ('minute', 60), ('hour', 3600),
+                            ('day', 86400)]:
+            limit._unit = value
+            self.assertEqual(limit.unit, unit)
+
+        limit._unit = 31337
+        self.assertEqual(limit.unit, '31337')
+
+    def test_unit_set(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+
+        for unit in ('second', 'seconds', 'secs', 'sec', 's'):
+            limit.unit = unit
+            self.assertEqual(limit._unit, 1)
+
+        for unit in ('minute', 'minutes', 'mins', 'min', 'm'):
+            limit.unit = unit
+            self.assertEqual(limit._unit, 60)
+
+        for unit in ('hour', 'hours', 'hrs', 'hr', 'h'):
+            limit.unit = unit
+            self.assertEqual(limit._unit, 3600)
+
+        for unit in ('day', 'days', 'd'):
+            limit.unit = unit
+            self.assertEqual(limit._unit, 86400)
+
+        limit.unit = '31337'
+        self.assertEqual(limit._unit, 31337)
+
+        limit.unit = 31337
+        self.assertEqual(limit._unit, 31337)
+
+        with self.assertRaises(TypeError):
+            limit.unit = 3133.7
+
+        with self.assertRaises(KeyError):
+            limit.unit = 'nosuchunit'
+
+        with self.assertRaises(ValueError):
+            limit.unit = '0'
+
+        with self.assertRaises(ValueError):
+            limit.unit = -1
+
+    def test_cost(self):
+        limit = limits.Limit('db', 'uri', 10, 1)
+
+        self.assertEqual(limit.cost, 0.1)
+
+        limit.unit = 60
+        self.assertEqual(limit.cost, 6.0)
