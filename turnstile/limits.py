@@ -25,7 +25,7 @@ def get_unit_value(name):
     """Given a unit's name, return its value."""
 
     # Numbers map to numbers
-    if isinstance(name, (int, long, float)):
+    if isinstance(name, (int, long)):
         return name
 
     # Only accept strings from here on
