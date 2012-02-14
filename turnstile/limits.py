@@ -348,7 +348,7 @@ class Limit(object):
         parts.extend('%s=%s' % (k, params[k])
                      for k in sorted(params)
                      if k not in self.skip)
-        return ':'.join(parts)
+        return '/'.join(parts)
 
     def _filter(self, environ, params):
         """
