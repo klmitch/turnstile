@@ -386,7 +386,7 @@ class Limit(object):
         # corresponding to the longest delay returned.
         if delay is not None:
             environ.setdefault('turnstile.delay', [])
-            environ['turnstile.delay'].append((delay, limit, bucket))
+            environ['turnstile.delay'].append((delay, self, bucket))
 
         # Should we continue the route scan?
         return not self.continue_scan
