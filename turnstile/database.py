@@ -112,7 +112,7 @@ def initialize(middleware, config):
     # Look up the connection pool configuration
     cpool_class = None
     cpool = {}
-    for key, value in config:
+    for key, value in config.items():
         if key.startswith('connection_pool.'):
             _dummy, _sep, varname = key.partition('.')
             if varname == 'connection_class':
