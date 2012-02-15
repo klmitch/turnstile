@@ -64,3 +64,9 @@ class TestCase(unittest.TestCase):
     def log_messages(self):
         # Retrieve and clear test log messages
         return test_handler.get_messages()
+
+
+class GenericFakeClass(object):
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
