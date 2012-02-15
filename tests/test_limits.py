@@ -487,6 +487,21 @@ class TestLimit(tests.TestCase):
         self.assertEqual(db.update[3], (limit, key))
         self.assertEqual(id(bucket._params), id(params))
 
+    def test_format(self):
+        expected = ("This request was rate-limited.  Please retry your "
+                    "request after 1970-01-12T13:46:40Z.")
+        status = '413 Request Entity Too Large'
+        limit = limits.Limit('db', 'uri', 10, 1)
+        bucket = limits.Bucket('db', limit, 'key', next=1000000.0)
+        headers = {}
+
+        result_status, result_entity = limit.format(status, headers, {},
+                                                    bucket)
+
+        self.assertEqual(result_status, status)
+        self.assertEqual(result_entity, expected)
+        self.assertEqual(headers, {'Content-Type': 'text/plain'})
+
     def test_value_get(self):
         limit = limits.Limit('db', 'uri', 10, 1)
 
