@@ -55,7 +55,7 @@ class TestBucket(tests.TestCase):
     def test_hydrate(self):
         bucket_dict = dict(last=time.time() - 3600,
                            next=time.time(), level=0.5)
-        bucket = limits.Bucket.hydrate('db', 'limit', 'key', bucket_dict)
+        bucket = limits.Bucket.hydrate('db', bucket_dict, 'limit', 'key')
 
         self.assertEqual(bucket.db, 'db')
         self.assertEqual(bucket.limit, 'limit')

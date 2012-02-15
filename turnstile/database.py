@@ -62,7 +62,7 @@ class TurnstileRedis(redis.StrictRedis):
                     if raw is None:
                         obj = klass(self, *args)
                     else:
-                        obj = klass.hydrate(self, *args, msgpack.loads(raw))
+                        obj = klass.hydrate(self, msgpack.loads(raw), *args)
 
                     # Start the transaction...
                     pipe.multi()
