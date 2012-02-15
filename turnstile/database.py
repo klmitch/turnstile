@@ -142,6 +142,10 @@ def initialize(middleware, config):
                     del cpool['host']
                 if 'port' in cpool:
                     del cpool['port']
+
+                cpool['path'] = cpool['unix_socket_path']
+                del cpool['unix_socket_path']
+
                 cpool['connection_class'] = redis.UnixDomainSocketConnection
             else:
                 cpool['connection_class'] = redis.Connection
