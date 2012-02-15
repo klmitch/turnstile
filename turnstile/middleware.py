@@ -1,17 +1,123 @@
+import collections
 import math
 
 from turnstile import database
 from turnstile import utils
 
 
+class HeadersDict(collections.MutableMapping):
+    """
+    A dictionary class for headers.  All keys are mapped to lowercase.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize HeadersDict.  Uses update() to process additional
+        arguments.
+        """
+
+        self.headers = {}
+        self.update(*args, **kwargs)
+
+    def __getitem__(self, key):
+        """
+        Retrieve an item.
+        """
+
+        return self.headers[key.lower()]
+
+    def __setitem__(self, key, value):
+        """
+        Set an item.
+        """
+
+        self.headers[key.lower()] = value
+
+    def __delitem__(self, key):
+        """
+        Delete an item.
+        """
+
+        del self.headers[key.lower()]
+
+    def __contains__(self, key):
+        """
+        Test if the headers dictionary contains a given header.
+        """
+
+        return key.lower() in self.headers
+
+    def iterkeys(self):
+        """
+        Iterate through header names.
+        """
+
+        return self.headers.iterkeys()
+
+    def iteritems(self):
+        """
+        Iterate through header items.
+        """
+
+        return self.headers.iteritems()
+
+    def itervalues(self):
+        """
+        Iterate through header values.
+        """
+
+        return self.headers.itervalues()
+
+    def keys(self):
+        """
+        Return a list of header names.
+        """
+
+        return self.headers.keys()
+
+    def items(self):
+        """
+        Return a list of header items.
+        """
+
+        return self.headers.items()
+
+    def values(self):
+        """
+        Return a list of header values.
+        """
+
+        return self.headers.values()
+
+
 def turnstile_filter(global_conf, **local_conf):
+    """
+    Factory function for turnstile.
+
+    Returns a function which, when passed the application, returns an
+    instance of the TurnstileMiddleware.
+    """
+
     def wrapper(app):
         return TurnstileMiddleware(app, local_conf)
     return wrapper
 
 
 class TurnstileMiddleware(object):
+    """
+    Turnstile Middleware.
+
+    Instances of this class are WSGI middleware which perform the
+    desired rate limiting.
+    """
+
     def __init__(self, app, local_conf):
+        """
+        Initialize the turnstile middleware.  Saves the configuration
+        and sets up the list of preprocessors, connects to the
+        database, and initiates the control daemon thread.
+        """
+
         # Save the application
         self.app = app
         self.mapper = None
@@ -44,6 +150,14 @@ class TurnstileMiddleware(object):
         self.db, self.control_daemon = database.initialize(self, redis_args)
 
     def __call__(self, environ, start_response):
+        """
+        Implements the processing of the turnstile middleware.  Walks
+        the list of limit filters, invoking their filters, then
+        returns an appropriate response for the limit filter returning
+        the longest delay.  If no limit filter indicates that a delay
+        is needed, the request is passed on to the application.
+        """
+
         # Run the request preprocessors
         for preproc in self.preprocessors:
             # Preprocessors are expected to modify the environment;
@@ -61,11 +175,17 @@ class TurnstileMiddleware(object):
             delay, limit, bucket = sorted(environ['turnstile.delay'],
                                           key=lambda x: x[0])[-1]
 
+            # Set up the default status
+            status = self.config[None]['status']
+
             # Set up the retry-after header...
-            headers = [('Retry-After', "%d" % math.ceil(delay))]
+            headers = HeadersDict([('Retry-After', "%d" % math.ceil(delay))])
+
+            # Let format fiddle with the headers
+            status, entity = limit.format(status, headers, environ, bucket)
 
             # Return the response
-            start_response(self.config[None]['status'], headers)
-            return limit.format(bucket)
+            start_response(status, headers.items())
+            return entity
 
         return self.app(environ, start_response)

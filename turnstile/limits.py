@@ -403,6 +403,23 @@ class Limit(object):
 
         pass
 
+    def format(self, status, headers, environ, bucket):
+        """
+        Formats a response entity.  Returns a tuple of the desired
+        status code and the formatted entity.  The default status code
+        is passed in, as is a dictionary of headers.
+        """
+
+        # This is a default response entity, which can be overridden
+        # by limit subclasses.
+        entity = ("This request was rate-limited.  "
+                  "Please retry your request after %s." %
+                  time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                time.gmtime(bucket.next)))
+        headers['Content-Type'] = 'text/plain'
+
+        return status, entity
+
     @property
     def value(self):
         """Retrieve the value for this limit."""
