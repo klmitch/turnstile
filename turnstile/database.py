@@ -85,6 +85,9 @@ class TurnstileRedis(redis.StrictRedis):
                 except redis.WatchError:
                     # Try again...
                     continue
+                else:
+                    # We're all done!
+                    break
 
         return result
 
