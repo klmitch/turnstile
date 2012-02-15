@@ -408,6 +408,19 @@ class Limit(object):
         Formats a response entity.  Returns a tuple of the desired
         status code and the formatted entity.  The default status code
         is passed in, as is a dictionary of headers.
+
+        :param status: The default status code.  Should be returned to
+                       the caller, or an alternate selected.  The
+                       status code should include both the number and
+                       the message, separated by a single space.
+        :param headers: A dictionary of headers for the response.
+                        Should update the 'Content-Type' header at a
+                        minimum.
+        :param environ: The WSGI environment for the request.
+        :param bucket: The bucket containing the data which caused the
+                       delay decision to be made.  This can be used to
+                       obtain such information as the next time the
+                       request can be made.
         """
 
         # This is a default response entity, which can be overridden
