@@ -92,12 +92,13 @@ class FakeDatabase(database.TurnstileRedis):
         self._actions.append(('publish', channel, msg))
         self._published.append((channel, msg))
 
-        if 'raise' in msg:
-            raise Exception("Testing")
-
     def zrange(self, key, start, stop):
         self._actions.append(('zrange', key, start, stop))
         return self._fakedb[key]
+
+    def sadd(self, key, value):
+        self._actions.append(('sadd', key, value))
+        self._fakedb[key].add(value)
 
     def execute_command(self, *args, **kwargs):
         self._actions.append(('execute_command', args[0], args[1:], kwargs))
@@ -1165,3 +1166,76 @@ class TestControlDaemon(tests.TestCase):
             self.assertIsInstance(route, FakeLimit)
             self.assertEqual(route.args, (db,))
             self.assertEqual(route.kwargs, dict(limit='limit%d' % (idx + 1)))
+        self.assertEqual(daemon._pending.balance, 1)
+
+    def test_reload_alternate(self):
+        self.stub_start()
+        self.stub_reload()
+
+        db = FakeDatabase()
+        db._fakedb['alternate'] = [
+            dict(limit='limit1'),
+            dict(limit='limit2'),
+            ]
+        middleware = tests.GenericFakeClass()
+        daemon = database.ControlDaemon(db, middleware,
+                                        dict(limits_key='alternate'))
+        daemon._reload()
+
+        self.assertEqual(db._actions, [('zrange', 'alternate', 0, -1)])
+        self.assertTrue(hasattr(middleware, 'mapper'))
+        self.assertIsInstance(middleware.mapper, FakeMapper)
+        self.assertEqual(middleware.mapper.kwargs, dict(register=False))
+        self.assertEqual(len(middleware.mapper.routes), 2)
+        for idx, route in enumerate(middleware.mapper.routes):
+            self.assertIsInstance(route, FakeLimit)
+            self.assertEqual(route.args, (db,))
+            self.assertEqual(route.kwargs, dict(limit='limit%d' % (idx + 1)))
+        self.assertEqual(daemon._pending.balance, 1)
+
+    def test_reload_failure(self):
+        self.stub_start()
+        self.stub_reload()
+
+        db = FakeDatabase()
+        db._fakedb['errors'] = set()
+        middleware = tests.GenericFakeClass()
+        daemon = database.ControlDaemon(db, middleware, {})
+        daemon._reload()
+
+        self.assertEqual(len(db._actions), 3)
+        self.assertEqual(db._actions[0], ('zrange', 'limits', 0, -1))
+        self.assertEqual(db._actions[1][0], 'sadd')
+        self.assertEqual(db._actions[1][1], 'errors')
+        self.assertTrue(db._actions[1][2].startswith(
+                'Failed to load limits: '))
+        self.assertEqual(db._actions[2][0], 'publish')
+        self.assertEqual(db._actions[2][1], 'errors')
+        self.assertTrue(db._actions[2][2].startswith(
+                'Failed to load limits: '))
+        self.assertEqual(daemon._pending.balance, 1)
+
+    def test_reload_failure_alternate(self):
+        self.stub_start()
+        self.stub_reload()
+
+        db = FakeDatabase()
+        db._fakedb['errors_set'] = set()
+        middleware = tests.GenericFakeClass()
+        daemon = database.ControlDaemon(db, middleware, dict(
+                errors_key='errors_set',
+                errors_channel='errors_channel',
+                ))
+        daemon._reload()
+
+        self.assertEqual(len(db._actions), 3)
+        self.assertEqual(db._actions[0], ('zrange', 'limits', 0, -1))
+        self.assertEqual(db._actions[1][0], 'sadd')
+        self.assertEqual(db._actions[1][1], 'errors_set')
+        self.assertTrue(db._actions[1][2].startswith(
+                'Failed to load limits: '))
+        self.assertEqual(db._actions[2][0], 'publish')
+        self.assertEqual(db._actions[2][1], 'errors_channel')
+        self.assertTrue(db._actions[2][2].startswith(
+                'Failed to load limits: '))
+        self.assertEqual(daemon._pending.balance, 1)
