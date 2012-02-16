@@ -21,10 +21,11 @@ class TestHandler(logging.Handler, object):
         except Exception:
             pass
 
-    def get_messages(self):
+    def get_messages(self, clear=False):
         # Get the list of messages and clear it
         messages = self.messages
-        self.messages = []
+        if clear:
+            self.messages = []
         return messages
 
 
@@ -52,13 +53,13 @@ class TestCase(unittest.TestCase):
         self.stubs.Set(utils, 'import_class', fake_import)
 
         # Clear the log messages
-        test_handler.get_messages()
+        test_handler.get_messages(True)
 
     def tearDown(self):
         self.stubs.UnsetAll()
 
         # Clear the log messages
-        test_handler.get_messages()
+        test_handler.get_messages(True)
 
     @property
     def log_messages(self):

@@ -807,9 +807,8 @@ class TestControlDaemon(tests.TestCase):
         daemon._listen()
 
         self.assertEqual(daemon._commands, [])
-        messages = self.log_messages
-        self.assertEqual(len(messages), 1)
-        self.assertTrue(messages[0].startswith(
+        self.assertEqual(len(self.log_messages), 1)
+        self.assertTrue(self.log_messages[0].startswith(
                 "Failed to execute command 'test' arguments "
                 "['arg1', 'arg2']"))
 
@@ -824,9 +823,8 @@ class TestControlDaemon(tests.TestCase):
         daemon._listen()
 
         self.assertEqual(daemon._commands, [('failure', ('arg1', 'arg2'))])
-        messages = self.log_messages
-        self.assertEqual(len(messages), 1)
-        self.assertTrue(messages[0].startswith(
+        self.assertEqual(len(self.log_messages), 1)
+        self.assertTrue(self.log_messages[0].startswith(
                 "Failed to execute command 'failure' arguments "
                 "['arg1', 'arg2']"))
 
