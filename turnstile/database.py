@@ -236,7 +236,7 @@ class ControlDaemon(object):
                 try:
                     method = getattr(self, command)
                 except AttributeError:
-                    LOG.exception("No such command %r" % command)
+                    LOG.error("No such command %r" % command)
                     continue
 
                 # Don't do anything with non-callables
