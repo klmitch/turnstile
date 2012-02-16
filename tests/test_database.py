@@ -44,6 +44,7 @@ class FakeDatabase(database.TurnstileRedis):
         self._watching = set()
         self._messages = []
         self._pubsub = None
+        self._published = []
 
     def pipeline(self):
         self._actions.append(('pipeline',))
@@ -82,6 +83,13 @@ class FakeDatabase(database.TurnstileRedis):
         self._pubsub = PubSub(*args, **kwargs)
         self._pubsub._messages = self._messages
         return self._pubsub
+
+    def publish(self, channel, msg):
+        self._actions.append(('publish', channel, msg))
+        self._published.append((channel, msg))
+
+        if 'raise' in msg:
+            raise Exception("Testing")
 
     def execute_command(self, *args, **kwargs):
         self._actions.append(('execute_command', args[0], args[1:], kwargs))
@@ -854,3 +862,40 @@ class TestControlDaemon(tests.TestCase):
 
         self.assertEqual(daemon._commands, [('test', 'arg')])
         self.assertEqual(self.log_messages, [])
+
+    def test_ping_nochan(self):
+        db = FakeDatabase()
+        daemon = database.ControlDaemon(db, 'middleware', {})
+        daemon.ping(None)
+
+        self.assertEqual(db._published, [])
+
+    def test_ping_basic(self):
+        db = FakeDatabase()
+        daemon = database.ControlDaemon(db, 'middleware', {})
+        daemon.ping('pong')
+
+        self.assertEqual(db._published, [('pong', 'pong')])
+
+    def test_ping_basic_node(self):
+        db = FakeDatabase()
+        daemon = database.ControlDaemon(db, 'middleware',
+                                        dict(node_name='node'))
+        daemon.ping('pong')
+
+        self.assertEqual(db._published, [('pong', 'pong:node')])
+
+    def test_ping_data(self):
+        db = FakeDatabase()
+        daemon = database.ControlDaemon(db, 'middleware', {})
+        daemon.ping('pong', 'data')
+
+        self.assertEqual(db._published, [('pong', 'pong::data')])
+
+    def test_ping_data_node(self):
+        db = FakeDatabase()
+        daemon = database.ControlDaemon(db, 'middleware',
+                                        dict(node_name='node'))
+        daemon.ping('pong', 'data')
+
+        self.assertEqual(db._published, [('pong', 'pong:node:data')])
