@@ -666,7 +666,7 @@ class TestInitialize(tests.TestCase):
 
 
 class TestControlDaemon(tests.TestCase):
-    def stub_spawn(self, call=True):
+    def stub_spawn(self, call=False):
         self.spawns = []
 
         def fake_spawn_n(method, *args, **kwargs):
@@ -684,7 +684,7 @@ class TestControlDaemon(tests.TestCase):
         self.stubs.Set(eventlet, 'spawn_after', fake_spawn_after)
 
     def test_init(self):
-        self.stub_spawn()
+        self.stub_spawn(True)
 
         def fake_reload(obj):
             obj._reloaded = True
