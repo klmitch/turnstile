@@ -666,16 +666,31 @@ class TestInitialize(tests.TestCase):
 
 
 class TestControlDaemon(tests.TestCase):
+    def stub_spawn(self, call=True):
+        self.spawns = []
+
+        def fake_spawn_n(method, *args, **kwargs):
+            self.spawns.append(('spawn_n', method, args, kwargs))
+            if call:
+                return method(*args, **kwargs)
+
+        def fake_spawn_after(delay_time, method, *args, **kwargs):
+            self.spawns.append(('spawn_after', delay_time, method,
+                                args, kwargs))
+            if call:
+                return method(*args, **kwargs)
+
+        self.stubs.Set(eventlet, 'spawn_n', fake_spawn_n)
+        self.stubs.Set(eventlet, 'spawn_after', fake_spawn_after)
+
     def test_init(self):
+        self.stub_spawn()
+
         def fake_reload(obj):
             obj._reloaded = True
 
-        def fake_spawn(method, *args, **kwargs):
-            return method(*args, **kwargs)
-
         self.stubs.Set(database.ControlDaemon, '_listen', lambda obj: 'listen')
         self.stubs.Set(database.ControlDaemon, '_reload', fake_reload)
-        self.stubs.Set(eventlet, 'spawn_n', fake_spawn)
 
         daemon = database.ControlDaemon('db', 'middleware', 'config')
 
