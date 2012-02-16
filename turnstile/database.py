@@ -1,6 +1,5 @@
 import logging
 import random
-import traceback
 
 import eventlet
 import msgpack
@@ -220,24 +219,29 @@ class ControlDaemon(object):
 
                 # Don't do anything with internal commands
                 if command[0] == '_':
+                    LOG.error("Cannot call internal method %r" % command)
                     continue
 
                 # Don't do anything with missing commands
                 try:
                     method = getattr(self, command)
                 except AttributeError:
+                    LOG.exception("No such command %r" % command)
                     continue
 
                 # Don't do anything with non-callables
                 if not callable(method):
+                    LOG.error("Command %r is not callable" % command)
                     continue
 
                 # Execute the desired command
+                arglist = args.split(':')
                 try:
-                    method(*args.split(':'))
-                except TypeError:
-                    # Ignore if we don't have enough arguments
-                    pass
+                    method(*arglist)
+                except Exception:
+                    LOG.exception("Failed to execute command %r arguments %r" %
+                                  (command, arglist))
+                    continue
 
     def _reload(self):
         """
@@ -272,11 +276,8 @@ class ControlDaemon(object):
             # Install it
             self._middleware.mapper = mapper
         except Exception:
-            # Format an error message
-            msg = traceback.format_exc()
-
             # Log an error
-            LOG.error("While reloading limits: %s" % msg)
+            LOG.exception("Could not load limits")
 
             # Get our error set and publish channel
             error_key = self._config.get('errors_key', 'errors')
