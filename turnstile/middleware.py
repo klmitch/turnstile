@@ -47,6 +47,20 @@ class HeadersDict(collections.MutableMapping):
 
         return key.lower() in self.headers
 
+    def __iter__(self):
+        """
+        Iterate through the headers dictionary.
+        """
+
+        return iter(self.headers)
+
+    def __len__(self):
+        """
+        Retrieve the length of the headers dictionary.
+        """
+
+        return len(self.headers)
+
     def iterkeys(self):
         """
         Iterate through header names.
