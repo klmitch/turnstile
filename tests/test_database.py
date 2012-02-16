@@ -95,6 +95,26 @@ class FakeControlDaemon(object):
         self.config = config
 
 
+class ControlDaemonTest(database.ControlDaemon):
+    def __init__(self, *args, **kwargs):
+        super(ControlDaemonTest, self).__init__(*args, **kwargs)
+
+        self._commands = []
+
+    def _start(self):
+        pass
+
+    def _internal(self, *args):
+        self._commands.append(('internal', args))
+
+    def test(self, arg):
+        self._commands.append(('test', arg))
+
+    def failure(self, *args):
+        self._commands.append(('failure', args))
+        raise Exception("Failure")
+
+
 class FakeParser(tests.GenericFakeClass):
     pass
 
@@ -705,3 +725,134 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(pubsub._args, ())
         self.assertEqual(pubsub._kwargs, {})
         self.assertEqual(pubsub._subscriptions, set(['spam']))
+
+    def test_listen_nonmessage(self):
+        db = FakeDatabase()
+        db._messages.append(dict(
+                type='nosuch',
+                pattern=None,
+                channel='control',
+                data='test:foo'))
+        daemon = ControlDaemonTest(db, 'middleware', {})
+        daemon._listen()
+
+        self.assertEqual(daemon._commands, [])
+
+    def test_listen_wrongchannel(self):
+        db = FakeDatabase()
+        db._messages.append(dict(
+                type='message',
+                pattern=None,
+                channel='wrongchannel',
+                data='test:foo'))
+        daemon = ControlDaemonTest(db, 'middleware', {})
+        daemon._listen()
+
+        self.assertEqual(daemon._commands, [])
+
+    def test_listen_internal(self):
+        db = FakeDatabase()
+        db._messages.append(dict(
+                type='message',
+                pattern=None,
+                channel='control',
+                data='_internal:foo'))
+        daemon = ControlDaemonTest(db, 'middleware', {})
+        daemon._listen()
+
+        self.assertEqual(daemon._commands, [])
+        self.assertEqual(self.log_messages, [
+                "Cannot call internal method '_internal'",
+                ])
+
+    def test_listen_unknown(self):
+        db = FakeDatabase()
+        db._messages.append(dict(
+                type='message',
+                pattern=None,
+                channel='control',
+                data='unknown:foo'))
+        daemon = ControlDaemonTest(db, 'middleware', {})
+        daemon._listen()
+
+        self.assertEqual(daemon._commands, [])
+        self.assertEqual(self.log_messages, [
+                "No such command 'unknown'",
+                ])
+
+    def test_listen_uncallable(self):
+        db = FakeDatabase()
+        db._messages.append(dict(
+                type='message',
+                pattern=None,
+                channel='control',
+                data='spam:foo'))
+        daemon = ControlDaemonTest(db, 'middleware', {})
+        daemon.spam = 'maps'
+        daemon._listen()
+
+        self.assertEqual(daemon._commands, [])
+        self.assertEqual(self.log_messages, [
+                "Command 'spam' is not callable",
+                ])
+
+    def test_listen_badargs(self):
+        db = FakeDatabase()
+        db._messages.append(dict(
+                type='message',
+                pattern=None,
+                channel='control',
+                data='test:arg1:arg2'))
+        daemon = ControlDaemonTest(db, 'middleware', {})
+        daemon._listen()
+
+        self.assertEqual(daemon._commands, [])
+        messages = self.log_messages
+        self.assertEqual(len(messages), 1)
+        self.assertTrue(messages[0].startswith(
+                "Failed to execute command 'test' arguments "
+                "['arg1', 'arg2']"))
+
+    def test_listen_exception(self):
+        db = FakeDatabase()
+        db._messages.append(dict(
+                type='message',
+                pattern=None,
+                channel='control',
+                data='failure:arg1:arg2'))
+        daemon = ControlDaemonTest(db, 'middleware', {})
+        daemon._listen()
+
+        self.assertEqual(daemon._commands, [('failure', ('arg1', 'arg2'))])
+        messages = self.log_messages
+        self.assertEqual(len(messages), 1)
+        self.assertTrue(messages[0].startswith(
+                "Failed to execute command 'failure' arguments "
+                "['arg1', 'arg2']"))
+
+    def test_listen_callout(self):
+        db = FakeDatabase()
+        db._messages.append(dict(
+                type='message',
+                pattern=None,
+                channel='control',
+                data='test:arg'))
+        daemon = ControlDaemonTest(db, 'middleware', {})
+        daemon._listen()
+
+        self.assertEqual(daemon._commands, [('test', 'arg')])
+        self.assertEqual(self.log_messages, [])
+
+    def test_listen_callout_alternate_channel(self):
+        db = FakeDatabase()
+        db._messages.append(dict(
+                type='message',
+                pattern=None,
+                channel='alternate',
+                data='test:arg'))
+        daemon = ControlDaemonTest(db, 'middleware',
+                                   dict(control_channel='alternate'))
+        daemon._listen()
+
+        self.assertEqual(daemon._commands, [('test', 'arg')])
+        self.assertEqual(self.log_messages, [])
