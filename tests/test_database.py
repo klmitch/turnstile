@@ -1,3 +1,4 @@
+import eventlet
 import msgpack
 import redis
 
@@ -17,6 +18,21 @@ class PipelineContext(object):
         self._db._watching = set()
 
 
+class PubSub(object):
+    def __init__(self, *args, **kwargs):
+        self._args = args
+        self._kwargs = kwargs
+        self._messages = []
+        self._subscriptions = set()
+
+    def subscribe(self, channel):
+        self._subscriptions.add(channel)
+
+    def listen(self):
+        for msg in self._messages:
+            yield msg
+
+
 class FakeDatabase(database.TurnstileRedis):
     def __init__(self, *args, **kwargs):
         self._args = args
@@ -26,6 +42,8 @@ class FakeDatabase(database.TurnstileRedis):
         self._expireat = {}
         self._watcherror = {}
         self._watching = set()
+        self._messages = []
+        self._pubsub = None
 
     def pipeline(self):
         self._actions.append(('pipeline',))
@@ -58,6 +76,12 @@ class FakeDatabase(database.TurnstileRedis):
             if count:
                 self._watcherror[watch] = count - 1
                 raise redis.WatchError()
+
+    def pubsub(self, *args, **kwargs):
+        self._actions.append(('pubsub', args, kwargs))
+        self._pubsub = PubSub(*args, **kwargs)
+        self._pubsub._messages = self._messages
+        return self._pubsub
 
     def execute_command(self, *args, **kwargs):
         self._actions.append(('execute_command', args[0], args[1:], kwargs))
@@ -611,3 +635,73 @@ class TestInitialize(tests.TestCase):
                 arg1='arg1',
                 arg2='2',
                 ))
+
+
+class TestControlDaemon(tests.TestCase):
+    def test_init(self):
+        def fake_reload(obj):
+            obj._reloaded = True
+
+        def fake_spawn(method, *args, **kwargs):
+            return method(*args, **kwargs)
+
+        self.stubs.Set(database.ControlDaemon, '_listen', lambda obj: 'listen')
+        self.stubs.Set(database.ControlDaemon, '_reload', fake_reload)
+        self.stubs.Set(eventlet, 'spawn_n', fake_spawn)
+
+        daemon = database.ControlDaemon('db', 'middleware', 'config')
+
+        self.assertEqual(daemon._db, 'db')
+        self.assertEqual(daemon._middleware, 'middleware')
+        self.assertEqual(daemon._config, 'config')
+        self.assertIsInstance(daemon._pending, eventlet.semaphore.Semaphore)
+        self.assertEqual(daemon._listen_thread, 'listen')
+        self.assertEqual(daemon._reloaded, True)
+
+    def test_listen_basic(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+
+        db = FakeDatabase()
+        daemon = database.ControlDaemon(db, 'middleware', {})
+        daemon._listen()
+
+        self.assertEqual(db._actions, [('pubsub', (), {})])
+        self.assertIsInstance(db._pubsub, PubSub)
+
+        pubsub = db._pubsub
+        self.assertEqual(pubsub._args, ())
+        self.assertEqual(pubsub._kwargs, {})
+        self.assertEqual(pubsub._subscriptions, set(['control']))
+
+    def test_listen_shard(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+
+        db = FakeDatabase()
+        daemon = database.ControlDaemon(db, 'middleware',
+                                        dict(shard_hint='shard'))
+        daemon._listen()
+
+        self.assertEqual(db._actions, [('pubsub', (),
+                                        dict(shard_hint='shard'))])
+        self.assertIsInstance(db._pubsub, PubSub)
+
+        pubsub = db._pubsub
+        self.assertEqual(pubsub._args, ())
+        self.assertEqual(pubsub._kwargs, dict(shard_hint='shard'))
+        self.assertEqual(pubsub._subscriptions, set(['control']))
+
+    def test_listen_control(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+
+        db = FakeDatabase()
+        daemon = database.ControlDaemon(db, 'middleware',
+                                        dict(control_channel='spam'))
+        daemon._listen()
+
+        self.assertEqual(db._actions, [('pubsub', (), {})])
+        self.assertIsInstance(db._pubsub, PubSub)
+
+        pubsub = db._pubsub
+        self.assertEqual(pubsub._args, ())
+        self.assertEqual(pubsub._kwargs, {})
+        self.assertEqual(pubsub._subscriptions, set(['spam']))
