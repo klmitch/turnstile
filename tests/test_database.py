@@ -691,6 +691,9 @@ class TestControlDaemon(tests.TestCase):
         self.stubs.Set(eventlet, 'spawn_n', fake_spawn_n)
         self.stubs.Set(eventlet, 'spawn_after', fake_spawn_after)
 
+    def stub_start(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+
     def test_init(self):
         self.stub_spawn(True)
 
@@ -710,7 +713,7 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(daemon._reloaded, True)
 
     def test_listen_basic(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
 
         db = FakeDatabase()
         daemon = database.ControlDaemon(db, 'middleware', {})
@@ -725,7 +728,7 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(pubsub._subscriptions, set(['control']))
 
     def test_listen_shard(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
 
         db = FakeDatabase()
         daemon = database.ControlDaemon(db, 'middleware',
@@ -742,7 +745,7 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(pubsub._subscriptions, set(['control']))
 
     def test_listen_control(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
 
         db = FakeDatabase()
         daemon = database.ControlDaemon(db, 'middleware',
@@ -887,6 +890,8 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(self.log_messages, [])
 
     def test_ping_nochan(self):
+        self.stub_start()
+
         db = FakeDatabase()
         daemon = database.ControlDaemon(db, 'middleware', {})
         daemon.ping(None)
@@ -894,6 +899,8 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(db._published, [])
 
     def test_ping_basic(self):
+        self.stub_start()
+
         db = FakeDatabase()
         daemon = database.ControlDaemon(db, 'middleware', {})
         daemon.ping('pong')
@@ -901,6 +908,8 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(db._published, [('pong', 'pong')])
 
     def test_ping_basic_node(self):
+        self.stub_start()
+
         db = FakeDatabase()
         daemon = database.ControlDaemon(db, 'middleware',
                                         dict(node_name='node'))
@@ -909,6 +918,8 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(db._published, [('pong', 'pong:node')])
 
     def test_ping_data(self):
+        self.stub_start()
+
         db = FakeDatabase()
         daemon = database.ControlDaemon(db, 'middleware', {})
         daemon.ping('pong', 'data')
@@ -916,6 +927,8 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(db._published, [('pong', 'pong::data')])
 
     def test_ping_data_node(self):
+        self.stub_start()
+
         db = FakeDatabase()
         daemon = database.ControlDaemon(db, 'middleware',
                                         dict(node_name='node'))
@@ -924,7 +937,7 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(db._published, [('pong', 'pong:node:data')])
 
     def test_reload_command_noargs(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware', {})
@@ -935,7 +948,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_noargs_configured_bad(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware',
@@ -947,7 +960,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_noargs_configured(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware',
@@ -959,7 +972,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_badtype(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware', {})
@@ -970,7 +983,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_badtype_configured_bad(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware',
@@ -982,7 +995,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_badtype_configured(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware',
@@ -994,7 +1007,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_immediate(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware', {})
@@ -1005,7 +1018,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_immediate_configured(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware',
@@ -1017,7 +1030,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_spread(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware', {})
@@ -1028,7 +1041,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_spread_configured_bad(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware',
@@ -1040,7 +1053,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_spread_configured(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware',
@@ -1052,7 +1065,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_spread_given(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware', {})
@@ -1063,7 +1076,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_spread_bad_configured(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware',
@@ -1075,7 +1088,7 @@ class TestControlDaemon(tests.TestCase):
                 ])
 
     def test_reload_command_spread_given_configured(self):
-        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_start()
         self.stub_spawn()
 
         daemon = database.ControlDaemon('db', 'middleware',
