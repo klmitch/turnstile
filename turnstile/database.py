@@ -276,12 +276,12 @@ class ControlDaemon(object):
         try:
             # Load all the limits
             key = self._config.get('limits_key', 'limits')
-            limits = [limits.Limit.hydrate(self, msgpack.loads(lim))
-                      for lim in self._db.zrange(key, 0, -1)]
+            lims = [limits.Limit.hydrate(self._db, msgpack.loads(lim))
+                    for lim in self._db.zrange(key, 0, -1)]
 
             # Build the routes mapper
             mapper = routes.Mapper(register=False)
-            for lim in limits:
+            for lim in lims:
                 lim._route(mapper)
 
             # Install it
