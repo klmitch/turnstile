@@ -1,3 +1,5 @@
+import random
+
 import eventlet
 import msgpack
 import redis
@@ -666,6 +668,12 @@ class TestInitialize(tests.TestCase):
 
 
 class TestControlDaemon(tests.TestCase):
+    def setUp(self):
+        super(TestControlDaemon, self).setUp()
+
+        # Turn off random number generation
+        self.stubs.Set(random, 'random', lambda: 1.0)
+
     def stub_spawn(self, call=False):
         self.spawns = []
 
@@ -914,3 +922,166 @@ class TestControlDaemon(tests.TestCase):
         daemon.ping('pong', 'data')
 
         self.assertEqual(db._published, [('pong', 'pong:node:data')])
+
+    def test_reload_command_noargs(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware', {})
+        daemon.reload()
+
+        self.assertEqual(self.spawns, [
+                ('spawn_n', daemon._reload, (), {})
+                ])
+
+    def test_reload_command_noargs_configured_bad(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware',
+                                        dict(reload_spread='23.5.3'))
+        daemon.reload()
+
+        self.assertEqual(self.spawns, [
+                ('spawn_n', daemon._reload, (), {})
+                ])
+
+    def test_reload_command_noargs_configured(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware',
+                                        dict(reload_spread='23'))
+        daemon.reload()
+
+        self.assertEqual(self.spawns, [
+                ('spawn_after', 23.0, daemon._reload, (), {})
+                ])
+
+    def test_reload_command_badtype(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware', {})
+        daemon.reload('badtype')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_n', daemon._reload, (), {})
+                ])
+
+    def test_reload_command_badtype_configured_bad(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware',
+                                        dict(reload_spread='23.5.3'))
+        daemon.reload('badtype')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_n', daemon._reload, (), {})
+                ])
+
+    def test_reload_command_badtype_configured(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware',
+                                        dict(reload_spread='23'))
+        daemon.reload('badtype')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_after', 23.0, daemon._reload, (), {})
+                ])
+
+    def test_reload_command_immediate(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware', {})
+        daemon.reload('immediate')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_n', daemon._reload, (), {})
+                ])
+
+    def test_reload_command_immediate_configured(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware',
+                                        dict(reload_spread='23'))
+        daemon.reload('immediate')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_n', daemon._reload, (), {})
+                ])
+
+    def test_reload_command_spread(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware', {})
+        daemon.reload('spread')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_n', daemon._reload, (), {})
+                ])
+
+    def test_reload_command_spread_configured_bad(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware',
+                                        dict(reload_spread='23.5.3'))
+        daemon.reload('spread')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_n', daemon._reload, (), {})
+                ])
+
+    def test_reload_command_spread_configured(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware',
+                                        dict(reload_spread='23'))
+        daemon.reload('spread')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_after', 23.0, daemon._reload, (), {})
+                ])
+
+    def test_reload_command_spread_given(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware', {})
+        daemon.reload('spread', '18')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_after', 18.0, daemon._reload, (), {})
+                ])
+
+    def test_reload_command_spread_bad_configured(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware',
+                                        dict(reload_spread='23'))
+        daemon.reload('spread', '18.0.5')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_after', 23.0, daemon._reload, (), {})
+                ])
+
+    def test_reload_command_spread_given_configured(self):
+        self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
+        self.stub_spawn()
+
+        daemon = database.ControlDaemon('db', 'middleware',
+                                        dict(reload_spread='23'))
+        daemon.reload('spread', '18')
+
+        self.assertEqual(self.spawns, [
+                ('spawn_after', 18.0, daemon._reload, (), {})
+                ])
