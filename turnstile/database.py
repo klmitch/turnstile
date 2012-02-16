@@ -1,5 +1,6 @@
 import logging
 import random
+import traceback
 
 import eventlet
 import msgpack
@@ -292,6 +293,9 @@ class ControlDaemon(object):
             # Get our error set and publish channel
             error_key = self._config.get('errors_key', 'errors')
             error_channel = self._config.get('errors_channel', 'errors')
+
+            # Get an informative message
+            msg = "Failed to load limits: " + traceback.format_exc()
 
             # Store the message into the error set.  We use a set here
             # because it's likely that more than one node will
