@@ -3,8 +3,10 @@ import random
 import eventlet
 import msgpack
 import redis
+import routes
 
 from turnstile import database
+from turnstile import limits
 
 import tests
 
@@ -93,6 +95,10 @@ class FakeDatabase(database.TurnstileRedis):
         if 'raise' in msg:
             raise Exception("Testing")
 
+    def zrange(self, key, start, stop):
+        self._actions.append(('zrange', key, start, stop))
+        return self._fakedb[key]
+
     def execute_command(self, *args, **kwargs):
         self._actions.append(('execute_command', args[0], args[1:], kwargs))
         raise Exception("Unhandled command %s" % args[0])
@@ -135,6 +141,22 @@ class FakeConnection(object):
 
 class FakeConnectionPool(tests.GenericFakeClass):
     pass
+
+
+class FakeLimit(tests.GenericFakeClass):
+    @classmethod
+    def hydrate(cls, db, limit):
+        return cls(db, **limit)
+
+    def _route(self, mapper):
+        mapper.routes.append(self)
+
+
+class FakeMapper(tests.GenericFakeClass):
+    def __init__(self, *args, **kwargs):
+        super(FakeMapper, self).__init__(*args, **kwargs)
+
+        self.routes = []
 
 
 class ClassTest(object):
@@ -694,6 +716,11 @@ class TestControlDaemon(tests.TestCase):
     def stub_start(self):
         self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
 
+    def stub_reload(self):
+        self.stubs.Set(msgpack, 'loads', lambda x: x)
+        self.stubs.Set(limits, 'Limit', FakeLimit)
+        self.stubs.Set(routes, 'Mapper', FakeMapper)
+
     def test_init(self):
         self.stub_spawn(True)
 
@@ -1098,3 +1125,43 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(self.spawns, [
                 ('spawn_after', 18.0, daemon._reload, (), {})
                 ])
+
+    def test_reload_noacquire(self):
+        self.stub_start()
+        self.stub_reload()
+
+        db = FakeDatabase()
+        db._fakedb['limits'] = [
+            dict(limit='limit1'),
+            dict(limit='limit2'),
+            ]
+        middleware = tests.GenericFakeClass()
+        daemon = database.ControlDaemon(db, middleware, {})
+        daemon._pending.acquire()
+        daemon._reload()
+
+        self.assertEqual(db._actions, [])
+        self.assertFalse(hasattr(middleware, 'mapper'))
+
+    def test_reload(self):
+        self.stub_start()
+        self.stub_reload()
+
+        db = FakeDatabase()
+        db._fakedb['limits'] = [
+            dict(limit='limit1'),
+            dict(limit='limit2'),
+            ]
+        middleware = tests.GenericFakeClass()
+        daemon = database.ControlDaemon(db, middleware, {})
+        daemon._reload()
+
+        self.assertEqual(db._actions, [('zrange', 'limits', 0, -1)])
+        self.assertTrue(hasattr(middleware, 'mapper'))
+        self.assertIsInstance(middleware.mapper, FakeMapper)
+        self.assertEqual(middleware.mapper.kwargs, dict(register=False))
+        self.assertEqual(len(middleware.mapper.routes), 2)
+        for idx, route in enumerate(middleware.mapper.routes):
+            self.assertIsInstance(route, FakeLimit)
+            self.assertEqual(route.args, (db,))
+            self.assertEqual(route.kwargs, dict(limit='limit%d' % (idx + 1)))
