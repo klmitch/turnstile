@@ -1203,6 +1203,9 @@ class TestControlDaemon(tests.TestCase):
         daemon = database.ControlDaemon(db, middleware, {})
         daemon._reload()
 
+        self.assertEqual(len(self.log_messages), 1)
+        self.assertTrue(self.log_messages[0].startswith(
+                'Could not load limits'))
         self.assertEqual(len(db._actions), 3)
         self.assertEqual(db._actions[0], ('zrange', 'limits', 0, -1))
         self.assertEqual(db._actions[1][0], 'sadd')
@@ -1228,6 +1231,9 @@ class TestControlDaemon(tests.TestCase):
                 ))
         daemon._reload()
 
+        self.assertEqual(len(self.log_messages), 1)
+        self.assertTrue(self.log_messages[0].startswith(
+                'Could not load limits'))
         self.assertEqual(len(db._actions), 3)
         self.assertEqual(db._actions[0], ('zrange', 'limits', 0, -1))
         self.assertEqual(db._actions[1][0], 'sadd')
