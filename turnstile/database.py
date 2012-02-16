@@ -182,6 +182,16 @@ class ControlDaemon(object):
         # Need a semaphore to cover reloads in action
         self._pending = eventlet.semaphore.Semaphore()
 
+        # Start the daemon
+        self._start()
+
+    def _start(self):
+        """
+        Starts the ControlDaemon by launching the listening thread and
+        triggering the initial limits load.  Broken out of __init__()
+        for testing.
+        """
+
         # Spawn the listening thread
         self._listen_thread = eventlet.spawn_n(self._listen)
 
