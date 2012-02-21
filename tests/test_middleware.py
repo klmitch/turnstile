@@ -101,3 +101,16 @@ class TestHeadersDict(tests.TestCase):
 
         result = sorted(list(hd.values()))
         self.assertEqual(result, ['VALUE', 'value'])
+
+
+class TestTurnstileFilter(tests.TestCase):
+    def test_filter_factory(self):
+        self.stubs.Set(middleware, 'TurnstileMiddleware',
+                       tests.GenericFakeClass)
+
+        result = middleware.turnstile_filter({}, foo='value1', bar='value2')
+        self.assertTrue(callable(result))
+
+        obj = result('app')
+        self.assertIsInstance(obj, tests.GenericFakeClass)
+        self.assertEqual(obj.args, ('app', dict(foo='value1', bar='value2')))
