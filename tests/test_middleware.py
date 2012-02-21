@@ -19,6 +19,42 @@ def preproc3(environ):
     environ['turnstile.preprocess'].append('preproc3')
 
 
+class FakeMapper(object):
+    def __init__(self, delay=None):
+        self.delay = delay
+        self.environ = None
+
+    def routematch(self, environ):
+        self.environ = environ
+        if self.delay:
+            self.environ['turnstile.delay'] = self.delay
+
+
+class FakeLimit(object):
+    def __init__(self, ident, headers=None):
+        self.ident = ident
+        self.headers = headers
+        self.environ = None
+        self.bucket = None
+
+    def format(self, status, headers, environ, bucket):
+        self.environ = environ
+        self.bucket = bucket
+        if self.headers:
+            headers.update(self.headers)
+        return status, "Fake Entity for limit %s" % self.ident
+
+
+class Response(object):
+    def __init__(self):
+        self.status = None
+        self.headers = None
+
+    def start(self, status, headers):
+        self.status = status
+        self.headers = dict(headers)
+
+
 class TestHeadersDict(tests.TestCase):
     def test_init_sequence(self):
         hd = middleware.HeadersDict([('Foo', 'value'), ('bAR', 'VALUE')])
@@ -183,3 +219,136 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(mid.preprocessors, [preproc1, preproc2, preproc3])
         self.assertEqual(id(mid.db), id(mid))
         self.assertEqual(mid.control_daemon, dict(host='example.com'))
+
+    def test_call_through(self):
+        response = Response()
+        environ = dict(test=True)
+
+        def app(env, start_response):
+            self.assertEqual(id(env), id(environ))
+            self.assertEqual(start_response, response.start)
+
+            return 'app called'
+
+        mid = middleware.TurnstileMiddleware(app, {})
+        mid.mapper = FakeMapper()
+        result = mid(environ, response.start)
+
+        self.assertEqual(id(mid.mapper.environ), id(environ))
+        self.assertEqual(environ, dict(test=True))
+        self.assertEqual(result, 'app called')
+        self.assertEqual(response.status, None)
+        self.assertEqual(response.headers, None)
+
+    def test_call_preprocess(self):
+        response = Response()
+        environ = dict(test=True)
+
+        def app(env, start_response):
+            self.assertEqual(id(env), id(environ))
+            self.assertEqual(start_response, response.start)
+
+            return 'app called'
+
+        mid = middleware.TurnstileMiddleware(app, dict(
+                preprocess='preproc1 preproc2 preproc3',
+                ))
+        mid.mapper = FakeMapper()
+        result = mid(environ, response.start)
+
+        self.assertEqual(id(mid.mapper.environ), id(environ))
+        self.assertEqual(environ, {
+                'test': True,
+                'turnstile.preprocess':
+                    ['preproc1', 'preproc2', 'preproc3'],
+                })
+        self.assertEqual(result, 'app called')
+        self.assertEqual(response.status, None)
+        self.assertEqual(response.headers, None)
+
+    def test_call_limited(self):
+        response = Response()
+        environ = dict(test=True)
+        delays = [
+            (1.5, FakeLimit('limit1'), 'bucket1'),
+            (3.4, FakeLimit('limit2'), 'bucket2'),
+            (2.5, FakeLimit('limit3'), 'bucket3'),
+            ]
+
+        def app(env, start_response):
+            self.assertTrue(False)
+
+        mid = middleware.TurnstileMiddleware(app, {})
+        mid.mapper = FakeMapper(delays)
+        result = mid(environ, response.start)
+
+        self.assertEqual(id(mid.mapper.environ), id(environ))
+        self.assertEqual(environ, {
+                'test': True,
+                'turnstile.delay': delays,
+                })
+        self.assertEqual(result, 'Fake Entity for limit limit2')
+        self.assertEqual(response.status, '413 Request Entity Too Large')
+        self.assertEqual(response.headers, {
+                'retry-after': '4',
+                })
+
+        self.assertEqual(delays[0][1].environ, None)
+        self.assertEqual(delays[0][1].bucket, None)
+        self.assertEqual(id(delays[1][1].environ), id(environ))
+        self.assertEqual(delays[1][1].bucket, 'bucket2')
+        self.assertEqual(delays[2][1].environ, None)
+        self.assertEqual(delays[2][1].bucket, None)
+
+    def test_call_limited_alternate_status(self):
+        response = Response()
+        environ = dict(test=True)
+        delays = [(3.4, FakeLimit('limit1'), 'bucket1')]
+
+        def app(env, start_response):
+            self.assertTrue(False)
+
+        mid = middleware.TurnstileMiddleware(app, dict(status='404 Not Found'))
+        mid.mapper = FakeMapper(delays)
+        result = mid(environ, response.start)
+
+        self.assertEqual(id(mid.mapper.environ), id(environ))
+        self.assertEqual(environ, {
+                'test': True,
+                'turnstile.delay': delays,
+                })
+        self.assertEqual(result, 'Fake Entity for limit limit1')
+        self.assertEqual(response.status, '404 Not Found')
+        self.assertEqual(response.headers, {
+                'retry-after': '4',
+                })
+
+        self.assertEqual(id(delays[0][1].environ), id(environ))
+        self.assertEqual(delays[0][1].bucket, 'bucket1')
+
+    def test_call_limited_extra_headers(self):
+        response = Response()
+        environ = dict(test=True)
+        delays = [(3.4, FakeLimit('limit1', dict(test='foo')), 'bucket1')]
+
+        def app(env, start_response):
+            self.assertTrue(False)
+
+        mid = middleware.TurnstileMiddleware(app, {})
+        mid.mapper = FakeMapper(delays)
+        result = mid(environ, response.start)
+
+        self.assertEqual(id(mid.mapper.environ), id(environ))
+        self.assertEqual(environ, {
+                'test': True,
+                'turnstile.delay': delays,
+                })
+        self.assertEqual(result, 'Fake Entity for limit limit1')
+        self.assertEqual(response.status, '413 Request Entity Too Large')
+        self.assertEqual(response.headers, {
+                'retry-after': '4',
+                'test': 'foo',
+                })
+
+        self.assertEqual(id(delays[0][1].environ), id(environ))
+        self.assertEqual(delays[0][1].bucket, 'bucket1')
