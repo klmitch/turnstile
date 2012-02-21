@@ -4,6 +4,21 @@ from turnstile import middleware
 import tests
 
 
+def preproc1(environ):
+    environ.setdefault('turnstile.preprocess', [])
+    environ['turnstile.preprocess'].append('preproc1')
+
+
+def preproc2(environ):
+    environ.setdefault('turnstile.preprocess', [])
+    environ['turnstile.preprocess'].append('preproc2')
+
+
+def preproc3(environ):
+    environ.setdefault('turnstile.preprocess', [])
+    environ['turnstile.preprocess'].append('preproc3')
+
+
 class TestHeadersDict(tests.TestCase):
     def test_init_sequence(self):
         hd = middleware.HeadersDict([('Foo', 'value'), ('bAR', 'VALUE')])
@@ -114,3 +129,57 @@ class TestTurnstileFilter(tests.TestCase):
         obj = result('app')
         self.assertIsInstance(obj, tests.GenericFakeClass)
         self.assertEqual(obj.args, ('app', dict(foo='value1', bar='value2')))
+
+
+class TestTurnstileMiddleware(tests.TestCase):
+    imports = {
+        'preproc1': preproc1,
+        'preproc2': preproc2,
+        'preproc3': preproc3,
+        }
+
+    def setUp(self):
+        super(TestTurnstileMiddleware, self).setUp()
+        self.stubs.Set(database, 'initialize', lambda mid, cfg: (mid, cfg))
+
+    def test_init_basic(self):
+        mid = middleware.TurnstileMiddleware('app', {})
+
+        self.assertEqual(mid.app, 'app')
+        self.assertEqual(mid.mapper, None)
+        self.assertEqual(mid.config, {
+                None: dict(status='413 Request Entity Too Large'),
+                })
+        self.assertEqual(mid.preprocessors, [])
+        self.assertEqual(id(mid.db), id(mid))
+        self.assertEqual(mid.control_daemon, {})
+
+    def test_init_config(self):
+        config = {
+            'status': '404 Not Found',
+            'preprocess': 'preproc1 preproc2 preproc3',
+            'foo': 'top-level',
+            'foo.bar': 'mid-level',
+            'foo.bar.baz': 'bottom',
+            'redis.host': 'example.com',
+            }
+        mid = middleware.TurnstileMiddleware('app', config)
+
+        self.assertEqual(mid.app, 'app')
+        self.assertEqual(mid.mapper, None)
+        self.assertEqual(mid.config, {
+                None: dict(
+                    status='404 Not Found',
+                    preprocess='preproc1 preproc2 preproc3',
+                    foo='top-level',
+                    ),
+                'foo': {
+                    'bar': 'mid-level',
+                    'bar.baz': 'bottom',
+                    },
+                'redis': dict(
+                    host='example.com',
+                    )})
+        self.assertEqual(mid.preprocessors, [preproc1, preproc2, preproc3])
+        self.assertEqual(id(mid.db), id(mid))
+        self.assertEqual(mid.control_daemon, dict(host='example.com'))
