@@ -1,3 +1,4 @@
+import json
 import random
 
 import eventlet
@@ -181,6 +182,9 @@ class FakeLimit(tests.GenericFakeClass):
     def hydrate(cls, db, limit):
         return cls(db, **limit)
 
+    def dehydrate(self):
+        return self.kwargs
+
     def _route(self, mapper):
         mapper.routes.append(self)
 
@@ -352,6 +356,135 @@ class TestSafeUpdate(tests.TestCase):
         self.assertEqual(db._fakedb,
                          dict(spam=dict(a=4, b=3, c=2, d=1, expire=1000000.0)))
         self.assertEqual(db._expireat, dict(spam=1000000.0))
+
+
+class TestLimitUpdate(tests.TestCase):
+    def setUp(self):
+        super(TestLimitUpdate, self).setUp()
+
+        self.stubs.Set(msgpack, 'loads', json.loads)
+        self.stubs.Set(msgpack, 'dumps', json.dumps)
+
+    def test_limit_update_empty(self):
+        db = FakeDatabase()
+        limits = [
+            FakeLimit(name='limit1'),
+            FakeLimit(name='limit2'),
+            FakeLimit(name='limit3'),
+            ]
+        db.limit_update('limits', limits)
+
+        self.assertEqual(db._actions, [
+                ('pipeline',),
+                ('watch', 'limits'),
+                ('zrange', 'limits', 0, -1),
+                ('multi',),
+                ('zadd', 'limits', [(0, '{"name": "limit1"}')]),
+                ('zadd', 'limits', [(10, '{"name": "limit2"}')]),
+                ('zadd', 'limits', [(20, '{"name": "limit3"}')]),
+                ('execute',),
+                ])
+        self.assertEqual(db._fakedb['limits'], [
+                (0, '{"name": "limit1"}'),
+                (10, '{"name": "limit2"}'),
+                (20, '{"name": "limit3"}'),
+                ])
+
+    def test_limit_update_delete(self):
+        db = FakeDatabase()
+        db._fakedb['limits'] = [
+            (0, '{"name": "limit1"}'),
+            (10, '{"name": "limit2"}'),
+            (20, '{"name": "limit3"}'),
+            ]
+        db.limit_update('limits', [])
+
+        self.assertEqual(db._actions[:4], [
+                ('pipeline',),
+                ('watch', 'limits'),
+                ('zrange', 'limits', 0, -1),
+                ('multi',),
+                ])
+        self.assertEqual(db._actions[-1], ('execute',))
+
+        tmp = sorted(list(db._actions[4:-1]), key=lambda x: x[2][0])
+        self.assertEqual(tmp, [
+                ('zrem', 'limits', ('{"name": "limit1"}',)),
+                ('zrem', 'limits', ('{"name": "limit2"}',)),
+                ('zrem', 'limits', ('{"name": "limit3"}',)),
+                ])
+
+        self.assertEqual(db._fakedb['limits'], [])
+
+    def test_limit_update_overlap(self):
+        db = FakeDatabase()
+        db._fakedb['limits'] = [
+            (0, '{"name": "limit1"}'),
+            (10, '{"name": "limit3"}'),
+            (20, '{"name": "limit4"}'),
+            ]
+        limits = [
+            FakeLimit(name='limit1'),
+            FakeLimit(name='limit2'),
+            FakeLimit(name='limit3'),
+            ]
+        db.limit_update('limits', limits)
+
+        self.assertEqual(db._actions, [
+                ('pipeline',),
+                ('watch', 'limits'),
+                ('zrange', 'limits', 0, -1),
+                ('multi',),
+                ('zrem', 'limits', ('{"name": "limit4"}',)),
+                ('zadd', 'limits', [(0, '{"name": "limit1"}')]),
+                ('zadd', 'limits', [(10, '{"name": "limit2"}')]),
+                ('zadd', 'limits', [(20, '{"name": "limit3"}')]),
+                ('execute',),
+                ])
+        self.assertEqual(db._fakedb['limits'], [
+                (0, '{"name": "limit1"}'),
+                (10, '{"name": "limit2"}'),
+                (20, '{"name": "limit3"}'),
+                ])
+
+    def test_limit_update_watcherror(self):
+        db = FakeDatabase()
+        db._fakedb['limits'] = [
+            (0, '{"name": "limit1"}'),
+            (10, '{"name": "limit3"}'),
+            (20, '{"name": "limit4"}'),
+            ]
+        db._watcherror['limits'] = 1
+        limits = [
+            FakeLimit(name='limit1'),
+            FakeLimit(name='limit2'),
+            FakeLimit(name='limit3'),
+            ]
+        db.limit_update('limits', limits)
+
+        self.assertEqual(db._actions, [
+                ('pipeline',),
+                ('watch', 'limits'),
+                ('zrange', 'limits', 0, -1),
+                ('multi',),
+                ('zrem', 'limits', ('{"name": "limit4"}',)),
+                ('zadd', 'limits', [(0, '{"name": "limit1"}')]),
+                ('zadd', 'limits', [(10, '{"name": "limit2"}')]),
+                ('zadd', 'limits', [(20, '{"name": "limit3"}')]),
+                ('execute',),
+                ('watch', 'limits'),
+                ('zrange', 'limits', 0, -1),
+                ('multi',),
+                ('zadd', 'limits', [(0, '{"name": "limit1"}')]),
+                ('zadd', 'limits', [(10, '{"name": "limit2"}')]),
+                ('zadd', 'limits', [(20, '{"name": "limit3"}')]),
+                ('execute',),
+                ])
+        self.assertEqual(db._fakedb['limits'], [
+                (0, '{"name": "limit1"}'),
+                (10, '{"name": "limit2"}'),
+                (20, '{"name": "limit3"}'),
+                ])
 
 
 class TestInitialize(tests.TestCase):

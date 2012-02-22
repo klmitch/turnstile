@@ -91,6 +91,53 @@ class TurnstileRedis(redis.StrictRedis):
 
         return result
 
+    def limit_update(self, key, limits):
+        """
+        Safely updates the list of limits in the database.
+
+        :param key: The key the limits are stored under.
+        :param limits: A list or sequence of limit objects, each
+                       understanding the dehydrate() method.
+
+        The limits list currently in the database will be atomically
+        changed to match the new list.  This is done using the
+        pipeline() method.
+        """
+
+        # Start by dehydrating all the limits
+        desired = [msgpack.dumps(l.dehydrate()) for l in limits]
+        desired_set = set(desired)
+
+        # Now, let's update the limits
+        with self.pipeline() as pipe:
+            while True:
+                try:
+                    # Watch for changes to the key
+                    pipe.watch(key)
+
+                    # Look up the existing limits
+                    existing = set(pipe.zrange(key, 0, -1))
+
+                    # Start the transaction...
+                    pipe.multi()
+
+                    # Remove limits we no longer have
+                    for lim in existing - desired_set:
+                        pipe.zrem(key, lim)
+
+                    # Update or add all our desired limits
+                    for idx, lim in enumerate(desired):
+                        pipe.zadd(key, idx * 10, lim)
+
+                    # Execute the transaction
+                    pipe.execute()
+                except redis.WatchError:
+                    # Try again...
+                    continue
+                else:
+                    # We're all done!
+                    break
+
 
 def initialize(middleware, config):
     """
