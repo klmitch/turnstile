@@ -849,6 +849,18 @@ class TestControlDaemon(tests.TestCase):
 
         self.assertEqual(daemon._commands, [])
 
+    def test_listen_empty(self):
+        db = FakeDatabase()
+        db._messages.append(dict(
+                type='message',
+                pattern=None,
+                channel='control',
+                data=':foo'))
+        daemon = ControlDaemonTest(db, 'middleware', {})
+        daemon._listen()
+
+        self.assertEqual(daemon._commands, [])
+
     def test_listen_internal(self):
         db = FakeDatabase()
         db._messages.append(dict(

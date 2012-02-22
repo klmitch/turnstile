@@ -228,6 +228,10 @@ class ControlDaemon(object):
                 # Figure out what kind of message this is
                 command, _sep, args = msg['data'].partition(':')
 
+                # We must have some command...
+                if not command:
+                    continue
+
                 # Don't do anything with internal commands
                 if command[0] == '_':
                     LOG.error("Cannot call internal method %r" % command)
