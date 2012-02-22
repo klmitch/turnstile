@@ -487,6 +487,20 @@ class TestLimitUpdate(tests.TestCase):
                 ])
 
 
+class TestCommand(tests.TestCase):
+    def test_command_basic(self):
+        db = FakeDatabase()
+        db.command('control', 'foo')
+
+        self.assertEqual(db._published, [('control', 'foo')])
+
+    def test_command_args(self):
+        db = FakeDatabase()
+        db.command('control', 'foo', 'bar', 1, 1.0)
+
+        self.assertEqual(db._published, [('control', 'foo:bar:1:1.0')])
+
+
 class TestInitialize(tests.TestCase):
     imports = {
         'FakeParser': FakeParser,

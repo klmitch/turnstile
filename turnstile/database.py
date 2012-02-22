@@ -138,6 +138,29 @@ class TurnstileRedis(redis.StrictRedis):
                     # We're all done!
                     break
 
+    def command(self, channel, command, *args):
+        """
+        Utility method to issue a command to all Turnstile instances.
+
+        :param channel: The control channel all Turnstile instances
+                        are listening on.
+        :param command: The command, as plain text.  Currently, only
+                        'reload' and 'ping' are recognized.
+
+        All remaining arguments are treated as arguments for the
+        command; they will be stringified and sent along with the
+        command to the control channel.  Note that ':' is an illegal
+        character in arguments, but no warnings will be issued if it
+        is used.
+        """
+
+        # Build the command we're sending
+        cmd = [command]
+        cmd.extend(str(a) for a in args)
+
+        # Send it out
+        self.publish(channel, ':'.join(cmd))
+
 
 def initialize(middleware, config):
     """
