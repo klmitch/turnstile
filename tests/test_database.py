@@ -92,9 +92,41 @@ class FakeDatabase(database.TurnstileRedis):
         self._actions.append(('publish', channel, msg))
         self._published.append((channel, msg))
 
+    def zadd(self, key, *args):
+        additions = zip(args[::2], args[1::2])
+        self._actions.append(('zadd', key, additions))
+        zset = self._fakedb.setdefault(key, [])
+        for score, item in additions:
+            idx = self._zfind(zset, item)
+            if idx is None:
+                zset.append((score, item))
+            else:
+                zset[idx] = (score, item)
+        zset.sort(key=lambda x: x[0])
+
+    def zrem(self, key, *values):
+        self._actions.append(('zrem', key, values))
+        zset = self._fakedb.setdefault(key, [])
+        removals = []
+        for val in values:
+            idx = self._zfind(zset, val)
+            if idx is not None:
+                removals.append(idx)
+        for idx in sorted(removals, reverse=True):
+            del zset[idx]
+
+    def _zfind(self, zset, value):
+        for idx, (score, item) in enumerate(zset):
+            if item == value:
+                return idx
+        return None
+
     def zrange(self, key, start, stop):
         self._actions.append(('zrange', key, start, stop))
-        return self._fakedb[key]
+        if key in self._fakedb:
+            return [item[1] for item in self._fakedb[key]]
+        else:
+            return []
 
     def sadd(self, key, value):
         self._actions.append(('sadd', key, value))
@@ -158,6 +190,11 @@ class FakeMapper(tests.GenericFakeClass):
         super(FakeMapper, self).__init__(*args, **kwargs)
 
         self.routes = []
+
+
+class FakeFailingMapper(FakeMapper):
+    def __init__(self, *args, **kwargs):
+        raise Exception("Fake-out")
 
 
 class ClassTest(object):
@@ -717,10 +754,10 @@ class TestControlDaemon(tests.TestCase):
     def stub_start(self):
         self.stubs.Set(database.ControlDaemon, '_start', lambda x: None)
 
-    def stub_reload(self):
+    def stub_reload(self, mapper=FakeMapper):
         self.stubs.Set(msgpack, 'loads', lambda x: x)
         self.stubs.Set(limits, 'Limit', FakeLimit)
-        self.stubs.Set(routes, 'Mapper', FakeMapper)
+        self.stubs.Set(routes, 'Mapper', mapper)
 
     def test_init(self):
         self.stub_spawn(True)
@@ -1133,8 +1170,8 @@ class TestControlDaemon(tests.TestCase):
 
         db = FakeDatabase()
         db._fakedb['limits'] = [
-            dict(limit='limit1'),
-            dict(limit='limit2'),
+            (10, dict(limit='limit1')),
+            (20, dict(limit='limit2')),
             ]
         middleware = tests.GenericFakeClass()
         daemon = database.ControlDaemon(db, middleware, {})
@@ -1150,8 +1187,8 @@ class TestControlDaemon(tests.TestCase):
 
         db = FakeDatabase()
         db._fakedb['limits'] = [
-            dict(limit='limit1'),
-            dict(limit='limit2'),
+            (10, dict(limit='limit1')),
+            (20, dict(limit='limit2')),
             ]
         middleware = tests.GenericFakeClass()
         daemon = database.ControlDaemon(db, middleware, {})
@@ -1174,8 +1211,8 @@ class TestControlDaemon(tests.TestCase):
 
         db = FakeDatabase()
         db._fakedb['alternate'] = [
-            dict(limit='limit1'),
-            dict(limit='limit2'),
+            (10, dict(limit='limit1')),
+            (20, dict(limit='limit2')),
             ]
         middleware = tests.GenericFakeClass()
         daemon = database.ControlDaemon(db, middleware,
@@ -1195,7 +1232,7 @@ class TestControlDaemon(tests.TestCase):
 
     def test_reload_failure(self):
         self.stub_start()
-        self.stub_reload()
+        self.stub_reload(FakeFailingMapper)
 
         db = FakeDatabase()
         db._fakedb['errors'] = set()
@@ -1220,7 +1257,7 @@ class TestControlDaemon(tests.TestCase):
 
     def test_reload_failure_alternate(self):
         self.stub_start()
-        self.stub_reload()
+        self.stub_reload(FakeFailingMapper)
 
         db = FakeDatabase()
         db._fakedb['errors_set'] = set()
