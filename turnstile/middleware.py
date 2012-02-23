@@ -177,7 +177,7 @@ class TurnstileMiddleware(object):
             # Preprocessors are expected to modify the environment;
             # they are helpers to set up variables expected by the
             # limit classes.
-            preproc(environ)
+            preproc(self, environ)
 
         # Now, if we have a mapper, run through it
         if self.mapper:

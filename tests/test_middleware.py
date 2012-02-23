@@ -4,17 +4,17 @@ from turnstile import middleware
 import tests
 
 
-def preproc1(environ):
+def preproc1(mid, environ):
     environ.setdefault('turnstile.preprocess', [])
     environ['turnstile.preprocess'].append('preproc1')
 
 
-def preproc2(environ):
+def preproc2(mid, environ):
     environ.setdefault('turnstile.preprocess', [])
     environ['turnstile.preprocess'].append('preproc2')
 
 
-def preproc3(environ):
+def preproc3(mid, environ):
     environ.setdefault('turnstile.preprocess', [])
     environ['turnstile.preprocess'].append('preproc3')
 
