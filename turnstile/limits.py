@@ -1,6 +1,8 @@
 import math
 import time
 
+import metatools
+
 from turnstile import utils
 
 
@@ -147,7 +149,7 @@ class Bucket(object):
         return int(math.ceil(self.last + self.level))
 
 
-class LimitMeta(type):
+class LimitMeta(metatools.MetaClass):
     """
     Metaclass for limits.
     """
@@ -167,29 +169,12 @@ class LimitMeta(type):
         # Add it to the namespace
         namespace['_limit_full_name'] = full_name
 
-        attrs = namespace.get('attrs')
-        skip = namespace.get('skip')
-        if attrs is not None or skip is not None:
-            for base in bases:
-                if attrs is not None:
-                    # If a given base class has 'attrs', union with
-                    # that set of attributes
-                    try:
-                        attrs |= getattr(base, 'attrs')
-                    except AttributeError:
-                        # Ignore it if the base class doesn't have
-                        # 'attrs'...
-                        pass
-
-                if skip is not None:
-                    # If a given base class has 'skip', union with
-                    # that set of skipped parameters
-                    try:
-                        skip |= getattr(base, 'skip')
-                    except AttributeError:
-                        # Ignore it if the base class doesn't have
-                        # 'skip'...
-                        pass
+        # Set up attrs and skip
+        namespace.setdefault('attrs', {})
+        namespace.setdefault('skip', set())
+        for base in mcs.iter_bases(bases):
+            mcs.inherit_dict(base, namespace, 'attrs')
+            mcs.inherit_set(base, namespace, 'skip')
 
         # Create the class
         cls = super(LimitMeta, mcs).__new__(mcs, name, bases, namespace)
@@ -209,8 +194,31 @@ class Limit(object):
 
     __metaclass__ = LimitMeta
 
-    attrs = set(['uri', 'value', 'unit', 'verbs', 'requirements',
-                 'continue_scan'])
+    attrs = dict(
+        uri=('The URI the limit applies to.  This should be in a syntax '
+             'recognized by Routes, i.e., "/constant/{variable}".  Note '
+             'that this URI may be displayed to the user.  Required.', str),
+        value=('The permissible number of requests per unit time.  Required.',
+               int),
+        unit=('The unit of time over which the "value" is considered.  '
+              'This may be a string, such as "second", or an integer '
+              'number of seconds, expressed as a string.  Required.', str),
+        verbs=('The HTTP verbs this limit should apply to.  Optional.  If '
+               'not provided, this limit matches any request to the URI; '
+               'otherwise, only the listed methods match.  Takes a list of '
+               'strings.', list, str),
+        requirements=('A mapping of variable names in the URI to regular '
+                      'expressions; may be used to further restrict a given '
+                      'variable to a particular string.  This could be used '
+                      'to differentiate a request to "/resource/{id}" from '
+                      'a request to "/resource/edit".  Optional.', dict, str),
+        continue_scan=('A boolean which signals whether to consider limits '
+                       'following this one in the list.  If True (the '
+                       'default), the remaining limits are scanned even if '
+                       'this limit matches.  May be set to False to skip '
+                       'remaining limits.', bool),
+        )
+
     skip = set(['limit'])
 
     bucket_class = Bucket

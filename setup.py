@@ -26,6 +26,7 @@ setup(
     long_description=read('README.rst'),
     install_requires=[
         'eventlet',
+        'metatools',
         'msgpack',
         'redis',
         'routes',

@@ -162,7 +162,7 @@ class LimitTest1(limits.Limit):
 
 
 class LimitTest2(limits.Limit):
-    attrs = set(['test_attr'])
+    attrs = dict(test_attr=('Test attribute.', str))
     skip = set(['test_skip'])
 
     def route(self, route_args):
@@ -223,9 +223,10 @@ class TestLimitMeta(tests.TestCase):
         base_attrs = set(['uri', 'value', 'unit', 'verbs', 'requirements',
                           'continue_scan'])
 
-        self.assertEqual(limits.Limit.attrs, base_attrs)
-        self.assertEqual(LimitTest1.attrs, base_attrs)
-        self.assertEqual(LimitTest2.attrs, base_attrs | set(['test_attr']))
+        self.assertEqual(set(limits.Limit.attrs.keys()), base_attrs)
+        self.assertEqual(set(LimitTest1.attrs.keys()), base_attrs)
+        self.assertEqual(set(LimitTest2.attrs.keys()),
+                         base_attrs | set(['test_attr']))
 
     def test_skip(self):
         base_skip = set(['limit'])
