@@ -379,23 +379,23 @@ class TestLimitUpdate(tests.TestCase):
                 ('watch', 'limits'),
                 ('zrange', 'limits', 0, -1),
                 ('multi',),
-                ('zadd', 'limits', [(0, '{"name": "limit1"}')]),
-                ('zadd', 'limits', [(10, '{"name": "limit2"}')]),
-                ('zadd', 'limits', [(20, '{"name": "limit3"}')]),
+                ('zadd', 'limits', [(10, '{"name": "limit1"}')]),
+                ('zadd', 'limits', [(20, '{"name": "limit2"}')]),
+                ('zadd', 'limits', [(30, '{"name": "limit3"}')]),
                 ('execute',),
                 ])
         self.assertEqual(db._fakedb['limits'], [
-                (0, '{"name": "limit1"}'),
-                (10, '{"name": "limit2"}'),
-                (20, '{"name": "limit3"}'),
+                (10, '{"name": "limit1"}'),
+                (20, '{"name": "limit2"}'),
+                (30, '{"name": "limit3"}'),
                 ])
 
     def test_limit_update_delete(self):
         db = FakeDatabase()
         db._fakedb['limits'] = [
-            (0, '{"name": "limit1"}'),
-            (10, '{"name": "limit2"}'),
-            (20, '{"name": "limit3"}'),
+            (10, '{"name": "limit1"}'),
+            (20, '{"name": "limit2"}'),
+            (30, '{"name": "limit3"}'),
             ]
         db.limit_update('limits', [])
 
@@ -419,9 +419,9 @@ class TestLimitUpdate(tests.TestCase):
     def test_limit_update_overlap(self):
         db = FakeDatabase()
         db._fakedb['limits'] = [
-            (0, '{"name": "limit1"}'),
-            (10, '{"name": "limit3"}'),
-            (20, '{"name": "limit4"}'),
+            (10, '{"name": "limit1"}'),
+            (20, '{"name": "limit3"}'),
+            (30, '{"name": "limit4"}'),
             ]
         limits = [
             FakeLimit(name='limit1'),
@@ -436,23 +436,23 @@ class TestLimitUpdate(tests.TestCase):
                 ('zrange', 'limits', 0, -1),
                 ('multi',),
                 ('zrem', 'limits', ('{"name": "limit4"}',)),
-                ('zadd', 'limits', [(0, '{"name": "limit1"}')]),
-                ('zadd', 'limits', [(10, '{"name": "limit2"}')]),
-                ('zadd', 'limits', [(20, '{"name": "limit3"}')]),
+                ('zadd', 'limits', [(10, '{"name": "limit1"}')]),
+                ('zadd', 'limits', [(20, '{"name": "limit2"}')]),
+                ('zadd', 'limits', [(30, '{"name": "limit3"}')]),
                 ('execute',),
                 ])
         self.assertEqual(db._fakedb['limits'], [
-                (0, '{"name": "limit1"}'),
-                (10, '{"name": "limit2"}'),
-                (20, '{"name": "limit3"}'),
+                (10, '{"name": "limit1"}'),
+                (20, '{"name": "limit2"}'),
+                (30, '{"name": "limit3"}'),
                 ])
 
     def test_limit_update_watcherror(self):
         db = FakeDatabase()
         db._fakedb['limits'] = [
-            (0, '{"name": "limit1"}'),
-            (10, '{"name": "limit3"}'),
-            (20, '{"name": "limit4"}'),
+            (10, '{"name": "limit1"}'),
+            (20, '{"name": "limit3"}'),
+            (30, '{"name": "limit4"}'),
             ]
         db._watcherror['limits'] = 1
         limits = [
@@ -468,22 +468,22 @@ class TestLimitUpdate(tests.TestCase):
                 ('zrange', 'limits', 0, -1),
                 ('multi',),
                 ('zrem', 'limits', ('{"name": "limit4"}',)),
-                ('zadd', 'limits', [(0, '{"name": "limit1"}')]),
-                ('zadd', 'limits', [(10, '{"name": "limit2"}')]),
-                ('zadd', 'limits', [(20, '{"name": "limit3"}')]),
+                ('zadd', 'limits', [(10, '{"name": "limit1"}')]),
+                ('zadd', 'limits', [(20, '{"name": "limit2"}')]),
+                ('zadd', 'limits', [(30, '{"name": "limit3"}')]),
                 ('execute',),
                 ('watch', 'limits'),
                 ('zrange', 'limits', 0, -1),
                 ('multi',),
-                ('zadd', 'limits', [(0, '{"name": "limit1"}')]),
-                ('zadd', 'limits', [(10, '{"name": "limit2"}')]),
-                ('zadd', 'limits', [(20, '{"name": "limit3"}')]),
+                ('zadd', 'limits', [(10, '{"name": "limit1"}')]),
+                ('zadd', 'limits', [(20, '{"name": "limit2"}')]),
+                ('zadd', 'limits', [(30, '{"name": "limit3"}')]),
                 ('execute',),
                 ])
         self.assertEqual(db._fakedb['limits'], [
-                (0, '{"name": "limit1"}'),
-                (10, '{"name": "limit2"}'),
-                (20, '{"name": "limit3"}'),
+                (10, '{"name": "limit1"}'),
+                (20, '{"name": "limit2"}'),
+                (30, '{"name": "limit3"}'),
                 ])
 
 

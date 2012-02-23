@@ -127,7 +127,7 @@ class TurnstileRedis(redis.StrictRedis):
 
                     # Update or add all our desired limits
                     for idx, lim in enumerate(desired):
-                        pipe.zadd(key, idx * 10, lim)
+                        pipe.zadd(key, (idx + 1) * 10, lim)
 
                     # Execute the transaction
                     pipe.execute()
