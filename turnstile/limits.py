@@ -199,25 +199,26 @@ class Limit(object):
             desc=('The URI the limit applies to.  This should be in a syntax '
                   'recognized by Routes, i.e., "/constant/{variable}".  Note '
                   'that this URI may be displayed to the user.  Required.'),
-            type=(str,),
+            type=str,
             ),
         value=dict(
             desc=('The permissible number of requests per unit time.  '
                   'Required.'),
-            type=(int,),
+            type=int,
             ),
         unit=dict(
             desc=('The unit of time over which the "value" is considered.  '
                   'This may be a string, such as "second", or an integer '
                   'number of seconds, expressed as a string.  Required.'),
-            type=(str,),
+            type=str,
             ),
         verbs=dict(
             desc=('The HTTP verbs this limit should apply to.  Optional.  If '
                   'not provided, this limit matches any request to the URI; '
                   'otherwise, only the listed methods match.  Takes a list of '
                   'strings.'),
-            type=(list, str),
+            type=list,
+            subtype=str,
             default=lambda: [],  # Make sure we don't use the *same* list
             xform=lambda verbs: [v.upper() for v in verbs],
             ),
@@ -227,7 +228,8 @@ class Limit(object):
                   'variable to a particular string.  This could be used '
                   'to differentiate a request to "/resource/{id}" from '
                   'a request to "/resource/edit".  Optional.'),
-            type=(dict, str),
+            type=dict,
+            subtype=str,
             default=lambda: {},  # Make sure we don't use the *same* dict
             ),
         continue_scan=dict(
@@ -236,7 +238,7 @@ class Limit(object):
                   'default), the remaining limits are scanned even if '
                   'this limit matches.  May be set to False to skip '
                   'remaining limits.'),
-            type=(bool,),
+            type=bool,
             default=True,
             ),
         )
