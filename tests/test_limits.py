@@ -257,6 +257,10 @@ class TestLimit(tests.TestCase):
         self.assertEqual(limit.requirements, {})
         self.assertEqual(limit.continue_scan, True)
 
+    def test_init_missing_value(self):
+        with self.assertRaises(TypeError):
+            limit = limits.Limit('db')
+
     def test_init_bad_value(self):
         with self.assertRaises(ValueError):
             limit = limits.Limit('db', uri='uri', value=0, unit=1)
