@@ -188,8 +188,9 @@ class LimitMeta(metatools.MetaClass):
 
 class Limit(object):
     """
-    Base class for representing limits.  All limits should derive from
-    this class.
+    Basic limit.  This can be used as an absolute rate limit on a
+    given endpoint or set of endpoints.  All other limit classes must
+    subclass this class.
     """
 
     __metaclass__ = LimitMeta
