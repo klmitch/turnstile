@@ -195,36 +195,57 @@ class Limit(object):
     __metaclass__ = LimitMeta
 
     attrs = dict(
-        uri=('The URI the limit applies to.  This should be in a syntax '
-             'recognized by Routes, i.e., "/constant/{variable}".  Note '
-             'that this URI may be displayed to the user.  Required.', str),
-        value=('The permissible number of requests per unit time.  Required.',
-               int),
-        unit=('The unit of time over which the "value" is considered.  '
-              'This may be a string, such as "second", or an integer '
-              'number of seconds, expressed as a string.  Required.', str),
-        verbs=('The HTTP verbs this limit should apply to.  Optional.  If '
-               'not provided, this limit matches any request to the URI; '
-               'otherwise, only the listed methods match.  Takes a list of '
-               'strings.', list, str),
-        requirements=('A mapping of variable names in the URI to regular '
-                      'expressions; may be used to further restrict a given '
-                      'variable to a particular string.  This could be used '
-                      'to differentiate a request to "/resource/{id}" from '
-                      'a request to "/resource/edit".  Optional.', dict, str),
-        continue_scan=('A boolean which signals whether to consider limits '
-                       'following this one in the list.  If True (the '
-                       'default), the remaining limits are scanned even if '
-                       'this limit matches.  May be set to False to skip '
-                       'remaining limits.', bool),
+        uri=dict(
+            desc=('The URI the limit applies to.  This should be in a syntax '
+                  'recognized by Routes, i.e., "/constant/{variable}".  Note '
+                  'that this URI may be displayed to the user.  Required.'),
+            type=(str,),
+            ),
+        value=dict(
+            desc=('The permissible number of requests per unit time.  '
+                  'Required.'),
+            type=(int,),
+            ),
+        unit=dict(
+            desc=('The unit of time over which the "value" is considered.  '
+                  'This may be a string, such as "second", or an integer '
+                  'number of seconds, expressed as a string.  Required.'),
+            type=(str,),
+            ),
+        verbs=dict(
+            desc=('The HTTP verbs this limit should apply to.  Optional.  If '
+                  'not provided, this limit matches any request to the URI; '
+                  'otherwise, only the listed methods match.  Takes a list of '
+                  'strings.'),
+            type=(list, str),
+            default=lambda: [],  # Make sure we don't use the *same* list
+            xform=lambda verbs: [v.upper() for v in verbs],
+            ),
+        requirements=dict(
+            desc=('A mapping of variable names in the URI to regular '
+                  'expressions; may be used to further restrict a given '
+                  'variable to a particular string.  This could be used '
+                  'to differentiate a request to "/resource/{id}" from '
+                  'a request to "/resource/edit".  Optional.'),
+            type=(dict, str),
+            default=lambda: {},  # Make sure we don't use the *same* dict
+            ),
+        continue_scan=dict(
+            desc=('A boolean which signals whether to consider limits '
+                  'following this one in the list.  If True (the '
+                  'default), the remaining limits are scanned even if '
+                  'this limit matches.  May be set to False to skip '
+                  'remaining limits.'),
+            type=(bool,),
+            default=True,
+            ),
         )
 
     skip = set(['limit'])
 
     bucket_class = Bucket
 
-    def __init__(self, db, uri, value, unit, verbs=None, requirements=None,
-                 continue_scan=True):
+    def __init__(self, db, **kwargs):
         """
         Initialize a new limit.
 
@@ -254,18 +275,33 @@ class Limit(object):
         """
 
         self.db = db
-        self.uri = uri
-        self._value = value
-        self._unit = get_unit_value(unit)
-        self.verbs = [v.upper() for v in verbs] if verbs else []
-        self.requirements = requirements or {}
-        self.continue_scan = continue_scan
 
-        # Sanity-check value and unit
-        if self._value <= 0:
-            raise ValueError("Limit value must be > 0")
-        elif self._unit <= 0:
-            raise ValueError("Unit value must be > 0")
+        # Save the various arguments
+        missing = set()
+        for attr, desc in self.attrs.items():
+            # A value is provided
+            if attr in kwargs:
+                value = kwargs[attr]
+
+                # Run the transformer, if one was specified
+                if 'xform' in desc:
+                    value = desc['xform'](value)
+            elif 'default' in desc:
+                # Use the default value; if it's callable, call it
+                value = (desc['default']() if callable(desc['default']) else
+                         desc['default'])
+            else:
+                # Missing attribute
+                missing.add(attr)
+                continue
+
+            # Save the attribute value
+            setattr(self, attr, value)
+
+        # Did we get all the required attributes?
+        if missing:
+            raise TypeError("Missing required attributes: %s" %
+                            ', '.join(sorted(missing)))
 
     @classmethod
     def hydrate(cls, db, limit):
