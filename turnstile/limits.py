@@ -306,6 +306,31 @@ class Limit(object):
             raise TypeError("Missing required attributes: %s" %
                             ', '.join(sorted(missing)))
 
+    def __repr__(self):
+        """
+        Return a representation of the limit.
+        """
+
+        base = [self._limit_full_name]
+        for attr in sorted(self.attrs):
+            desc = self.attrs[attr]
+            attr_type = desc.get('type', str)
+
+            # Treat lists and dicts specially
+            if attr_type == list:
+                sublist = [repr(v) for v in getattr(self, attr)]
+                value = '[%s]' % ','.join(sublist)
+            elif attr_type == dict:
+                sublist = ['%s=%r' % (k, v) for k, v in
+                           getattr(self, attr).items()]
+                value = '{%s}' % ', '.join(sublist)
+            else:
+                value = repr(getattr(self, attr))
+
+            base.append('%s=%s' % (attr, value))
+
+        return '<%s at 0x%x>' % (' '.join(base), id(self))
+
     @classmethod
     def hydrate(cls, db, limit):
         """
