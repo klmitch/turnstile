@@ -176,7 +176,8 @@ class TestTurnstileMiddleware(tests.TestCase):
 
     def setUp(self):
         super(TestTurnstileMiddleware, self).setUp()
-        self.stubs.Set(database, 'initialize', lambda mid, cfg: (mid, cfg))
+        self.stubs.Set(database, 'initialize', lambda cfg: cfg)
+        self.stubs.Set(database, 'ControlDaemon', tests.GenericFakeClass)
 
     def test_init_basic(self):
         mid = middleware.TurnstileMiddleware('app', {})
@@ -187,8 +188,9 @@ class TestTurnstileMiddleware(tests.TestCase):
                 None: dict(status='413 Request Entity Too Large'),
                 })
         self.assertEqual(mid.preprocessors, [])
-        self.assertEqual(id(mid.db), id(mid))
-        self.assertEqual(mid.control_daemon, {})
+        self.assertEqual(mid.db, {})
+        self.assertIsInstance(mid.control_daemon, tests.GenericFakeClass)
+        self.assertEqual(mid.control_daemon.args, (mid.db, mid, {}))
 
     def test_init_config(self):
         config = {
@@ -198,6 +200,8 @@ class TestTurnstileMiddleware(tests.TestCase):
             'foo.bar': 'mid-level',
             'foo.bar.baz': 'bottom',
             'redis.host': 'example.com',
+            'control.channel': 'spam',
+            'control.node_name': 'node1',
             }
         mid = middleware.TurnstileMiddleware('app', config)
 
@@ -215,10 +219,18 @@ class TestTurnstileMiddleware(tests.TestCase):
                     },
                 'redis': dict(
                     host='example.com',
-                    )})
+                    ),
+                'control': dict(
+                    channel='spam',
+                    node_name='node1',
+                    ),
+                })
         self.assertEqual(mid.preprocessors, [preproc1, preproc2, preproc3])
-        self.assertEqual(id(mid.db), id(mid))
-        self.assertEqual(mid.control_daemon, dict(host='example.com'))
+        self.assertEqual(mid.db, dict(host='example.com'))
+        self.assertIsInstance(mid.control_daemon, tests.GenericFakeClass)
+        self.assertEqual(mid.control_daemon.args,
+                         (mid.db, mid, dict(channel='spam',
+                                            node_name='node1')))
 
     def test_call_through(self):
         response = Response()

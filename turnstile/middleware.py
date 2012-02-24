@@ -161,7 +161,12 @@ class TurnstileMiddleware(object):
 
         # Next, let's configure redis
         redis_args = self.config.get('redis', {})
-        self.db, self.control_daemon = database.initialize(self, redis_args)
+        self.db = database.initialize(redis_args)
+
+        # And start up the control daemon
+        control_args = self.config.get('control', {})
+        self.control_daemon = database.ControlDaemon(self.db, self,
+                                                     control_args)
 
     def __call__(self, environ, start_response):
         """

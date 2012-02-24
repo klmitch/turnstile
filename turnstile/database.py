@@ -162,7 +162,7 @@ class TurnstileRedis(redis.StrictRedis):
         self.publish(channel, ':'.join(cmd))
 
 
-def initialize(middleware, config):
+def initialize(config):
     """
     Initialize a connection to the Redis database.
     """
@@ -224,13 +224,8 @@ def initialize(middleware, config):
         # the redis constructor...
         kwargs = dict(connection_pool=cpool_class(**cpool))
 
-    # Build the database
-    db = TurnstileRedis(**kwargs)
-
-    # Set up the control daemon thread
-    daemon = ControlDaemon(db, middleware, config)
-
-    return db, daemon
+    # Build and return the database
+    return TurnstileRedis(**kwargs)
 
 
 class ControlDaemon(object):
@@ -287,7 +282,7 @@ class ControlDaemon(object):
         pubsub = self._db.pubsub(**kwargs)
 
         # Subscribe to the right channel(s)...
-        channel = self._config.get('control_channel', 'control')
+        channel = self._config.get('channel', 'control')
         pubsub.subscribe(channel)
 
         # Now we listen...

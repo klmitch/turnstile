@@ -138,13 +138,6 @@ class FakeDatabase(database.TurnstileRedis):
         raise Exception("Unhandled command %s" % args[0])
 
 
-class FakeControlDaemon(object):
-    def __init__(self, db, middleware, config):
-        self.db = db
-        self.middleware = middleware
-        self.config = config
-
-
 class ControlDaemonTest(database.ControlDaemon):
     def __init__(self, *args, **kwargs):
         super(ControlDaemonTest, self).__init__(*args, **kwargs)
@@ -512,11 +505,10 @@ class TestInitialize(tests.TestCase):
         super(TestInitialize, self).setUp()
 
         self.stubs.Set(database, 'TurnstileRedis', FakeDatabase)
-        self.stubs.Set(database, 'ControlDaemon', FakeControlDaemon)
 
     def test_missing_connection(self):
         with self.assertRaises(redis.ConnectionError):
-            db, daemon = database.initialize('middleware', {})
+            db = database.initialize({})
 
     def test_host_connection(self):
         config = dict(
@@ -526,25 +518,19 @@ class TestInitialize(tests.TestCase):
             password='password',
             socket_timeout='321',
             )
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(db._kwargs, dict(
                 host='example.com', port=1234, db=5, password='password',
                 socket_timeout=321))
-        self.assertEqual(daemon.db, db)
-        self.assertEqual(daemon.middleware, 'middleware')
-        self.assertEqual(daemon.config, config)
 
     def test_host_minimal(self):
         config = dict(host='example.com')
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(db._kwargs, dict(host='example.com'))
-        self.assertEqual(daemon.db, db)
-        self.assertEqual(daemon.middleware, 'middleware')
-        self.assertEqual(daemon.config, config)
 
     def test_unix_connection(self):
         config = dict(
@@ -553,25 +539,19 @@ class TestInitialize(tests.TestCase):
             password='password',
             socket_timeout='321',
             )
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(db._kwargs, dict(
                 unix_socket_path='/tmp/redis', db=5, password='password',
                 socket_timeout=321))
-        self.assertEqual(daemon.db, db)
-        self.assertEqual(daemon.middleware, 'middleware')
-        self.assertEqual(daemon.config, config)
 
     def test_unix_minimal(self):
         config = dict(unix_socket_path='/tmp/redis')
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(db._kwargs, dict(unix_socket_path='/tmp/redis'))
-        self.assertEqual(daemon.db, db)
-        self.assertEqual(daemon.middleware, 'middleware')
-        self.assertEqual(daemon.config, config)
 
     def test_connection_pool_host(self):
         self.stubs.Set(redis, 'ConnectionPool', tests.GenericFakeClass)
@@ -586,7 +566,7 @@ class TestInitialize(tests.TestCase):
             'connection_pool.arg1': 'arg1',
             'connection_pool.arg2': '2',
             }
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(len(db._kwargs), 1)
@@ -623,7 +603,7 @@ class TestInitialize(tests.TestCase):
             'connection_pool.arg1': 'arg1',
             'connection_pool.arg2': '2',
             }
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(len(db._kwargs), 1)
@@ -659,7 +639,7 @@ class TestInitialize(tests.TestCase):
             'connection_pool.arg1': 'arg1',
             'connection_pool.arg2': '2',
             }
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(len(db._kwargs), 1)
@@ -697,7 +677,7 @@ class TestInitialize(tests.TestCase):
             'connection_pool.arg1': 'arg1',
             'connection_pool.arg2': '2',
             }
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(len(db._kwargs), 1)
@@ -735,7 +715,7 @@ class TestInitialize(tests.TestCase):
             'connection_pool.arg1': 'arg1',
             'connection_pool.arg2': '2',
             }
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(len(db._kwargs), 1)
@@ -773,7 +753,7 @@ class TestInitialize(tests.TestCase):
             'connection_pool.arg1': 'arg1',
             'connection_pool.arg2': '2',
             }
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(len(db._kwargs), 1)
@@ -810,7 +790,7 @@ class TestInitialize(tests.TestCase):
             'connection_pool.arg1': 'arg1',
             'connection_pool.arg2': '2',
             }
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(len(db._kwargs), 1)
@@ -849,7 +829,7 @@ class TestInitialize(tests.TestCase):
             'connection_pool.arg1': 'arg1',
             'connection_pool.arg2': '2',
             }
-        db, daemon = database.initialize('middleware', config)
+        db = database.initialize(config)
 
         self.assertEqual(db._args, ())
         self.assertEqual(len(db._kwargs), 1)
@@ -961,7 +941,7 @@ class TestControlDaemon(tests.TestCase):
 
         db = FakeDatabase()
         daemon = database.ControlDaemon(db, 'middleware',
-                                        dict(control_channel='spam'))
+                                        dict(channel='spam'))
         daemon._listen()
 
         self.assertEqual(db._actions, [('pubsub', (), {})])
@@ -1107,7 +1087,7 @@ class TestControlDaemon(tests.TestCase):
                 channel='alternate',
                 data='test:arg'))
         daemon = ControlDaemonTest(db, 'middleware',
-                                   dict(control_channel='alternate'))
+                                   dict(channel='alternate'))
         daemon._listen()
 
         self.assertEqual(daemon._commands, [('test', 'arg')])
