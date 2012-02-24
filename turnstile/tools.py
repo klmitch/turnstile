@@ -175,7 +175,7 @@ def _setup_limits(config, limits_file, do_reload=True,
 
         # Construct the limit and add it to the list of limits
         try:
-            limits.append(parse_limit(db, idx, limit))
+            limits.append(parse_limit_node(db, idx, limit))
         except Exception as exc:
             warnings.warn("Couldn't understand limit at index %d: %s" %
                           (idx, exc))
@@ -269,7 +269,7 @@ def setup_limits():
         return str(exc)
 
 
-def make_limit(root, limit):
+def make_limit_node(root, limit):
     """
     Given a Limit object, generate an XML node.
 
@@ -352,7 +352,7 @@ def _dump_limits(config, limits_file, debug=False):
     for idx, lim in enumerate(lims):
         if debug:
             print >>sys.stderr, "Dumping limit index %d: %r" % (idx, lim)
-        make_limit(root, lim)
+        make_limit_node(root, lim)
 
     # Write out the limits file
     if debug:
