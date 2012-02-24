@@ -24,7 +24,7 @@ setup(
         ],
     url='https://github.com/klmitch/turnstile',
     long_description=read('README.rst'),
-    scripts=['bin/setup_limits'],
+    scripts=['bin/setup_limits', 'bin/dump_limits'],
     install_requires=[
         'argparse',
         'eventlet',

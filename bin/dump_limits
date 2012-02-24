@@ -1,0 +1,121 @@
+#!/usr/bin/python
+
+import ConfigParser
+import os
+import sys
+
+import argparse
+import msgpack
+from lxml import etree
+
+
+# We need the database module and the utils from turnstile
+poss_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
+                                            os.pardir,
+                                            os.pardir))
+if os.path.exists(os.path.join(poss_topdir, 'turnstile', '__init__.py')):
+    sys.path.insert(0, poss_topdir)
+
+
+from turnstile import database
+from turnstile import limits
+
+
+def make_limit(root, limit):
+    # Build the base limit node
+    limit_node = etree.SubElement(root, 'limit',
+                                  {'class': limit._limit_full_name})
+
+    # Walk through all the recognized attributes
+    for attr in sorted(limit.attrs):
+        desc = limit.attrs[attr]
+        attr_type = desc.get('type', str)
+        value = getattr(limit, attr)
+
+        # Determine the default value, if we have one...
+        if 'default' in desc:
+            default = (desc['default']() if callable(desc['default']) else
+                       desc['default'])
+
+            # Skip attributes that have their default settings
+            if value == default:
+                continue
+
+        # Set up the attr node
+        attr_node = etree.SubElement(limit_node, 'attr', name=attr)
+
+        # Treat lists and dicts specially
+        if attr_type == list:
+            for val in value:
+                val_node = etree.SubElement(attr_node, 'value')
+                val_node.text = str(val)
+        elif attr_type == dict:
+            for key, val in value.items():
+                val_node = etree.SubElement(attr_node, 'value', key=key)
+                val_node.text = str(val)
+        else:
+            attr_node.text = str(value)
+
+
+def main(config, limits_file, debug=False):
+    # Instantiate the config parser
+    cp = ConfigParser.SafeConfigParser()
+
+    # Read the limits from the file
+    cp.read(config)
+
+    # Make sure we have a connection section
+    if not cp.has_section('connection'):
+        raise Exception("Missing [connection] section from %r" % config)
+
+    # Get the database configuration...
+    config = dict(cp.items('connection'))
+    limits_key = config.pop('limits_key', 'limits')
+    control_channel = config.pop('control_channel', 'control')
+
+    # Get the database connection
+    db = database.initialize(config)
+
+    # Now, grab all the limits
+    lims = [limits.Limit.hydrate(db, msgpack.loads(lim))
+            for lim in db.zrange(limits_key, 0, -1)]
+
+    # Build up the limits tree
+    root = etree.Element('limits')
+    limit_tree = etree.ElementTree(root)
+    for idx, lim in enumerate(lims):
+        if debug:
+            print >>sys.stderr, "Dumping limit index %d: %r" % (idx, lim)
+        make_limit(root, lim)
+
+    # Write out the limits file
+    if debug:
+        print >>sys.stderr, "Dumping limits to file %r" % limits_file
+    limit_tree.write(limits_file, xml_declaration=True, encoding='UTF-8',
+                     pretty_print=True)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description="Dump the current limits from the Redis database.",
+        )
+
+    parser.add_argument('config',
+                        help="Name of the configuration file, for connecting "
+                        "to the Redis database.")
+    parser.add_argument('limits_file',
+                        help="Name of the XML file that the limits will be "
+                        "dumped to.")
+    parser.add_argument('--debug', '-d',
+                        dest='debug',
+                        action='store_true',
+                        default=False,
+                        help="Run the tool in debug mode.")
+
+    args = parser.parse_args()
+    try:
+        main(args.config, args.limits_file, args.debug)
+    except Exception as exc:
+        if args.debug:
+            raise
+        sys.exit(str(exc))
