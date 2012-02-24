@@ -25,6 +25,11 @@ setup(
     url='https://github.com/klmitch/turnstile',
     long_description=read('README.rst'),
     scripts=['bin/setup_limits', 'bin/dump_limits'],
+    entry_points={
+        'paste.filter_factory': [
+            'turnstile = turnstile.middleware:turnstile_filter',
+            ],
+        },
     install_requires=[
         'argparse',
         'eventlet',
