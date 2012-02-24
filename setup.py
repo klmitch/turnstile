@@ -28,6 +28,7 @@ setup(
     install_requires=[
         'argparse',
         'eventlet',
+        'lxml',
         'metatools',
         'msgpack',
         'redis',

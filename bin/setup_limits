@@ -4,9 +4,9 @@ import ConfigParser
 import os
 import sys
 import warnings
-from xml.etree import ElementTree
 
 import argparse
+from lxml import etree
 
 
 # We need the database module and the utils from turnstile
@@ -127,12 +127,12 @@ def main(config, limits_file, do_reload=True, dry_run=False, debug=False):
     # Read the limits from the file
     cp.read(config)
 
-    # Make sure we have a database section
+    # Make sure we have a connection section
     if not cp.has_section('connection'):
         raise Exception("Missing [connection] section from %r" % config)
 
     # Parse the limits file
-    limits_tree = ElementTree.parse(limits_file)
+    limits_tree = etree.parse(limits_file)
 
     # Get the database configuration...
     config = dict(cp.items('connection'))
@@ -195,7 +195,7 @@ def main(config, limits_file, do_reload=True, dry_run=False, debug=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description="Set up or update limits in the Redis database."
+        description="Set up or update limits in the Redis database.",
         )
 
     parser.add_argument('config',
