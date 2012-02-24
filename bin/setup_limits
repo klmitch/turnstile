@@ -1,187 +1,15 @@
 #!/usr/bin/python
 
-import collections
 import ConfigParser
 import os
 import sys
 import warnings
+from xml.etree import ElementTree
 
-# Limit ordering is important.  In Python 2.7, collections.OrderedDict
-# exists and is used as the default dict class for the config parser.
-# Unfortunately, in Python 2.6, neither of these are true.  We work
-# around this by copying in the OrderedDict from Python 2.7 and
-# subclassing ConfigParser.SafeConfigParser to make it use OrderedDict
-# as our prefered dict class.
-if hasattr(collections, 'OrderedDict'):
-    LimitConfigParser = ConfigParser.SafeConfigParser
-else:
-    # Note: Copied from Python 2.7 collections.py
-    class OrderedDict(dict, collections.MutableMapping):
-        'Dictionary that remembers insertion order'
-        # An inherited dict maps keys to values.
-        # The inherited dict provides __getitem__, __len__, __contains__, and
-        # get.
-        # The remaining methods are order-aware.
-        # Big-O running times for all methods are the same as for regular
-        # dictionaries.
-
-        # The internal self.__map dictionary maps keys to links in a doubly
-        # linked list.
-        # The circular doubly linked list starts and ends with a sentinel
-        # element.
-        # The sentinel element never gets deleted (this simplifies the
-        # algorithm).
-        # Each link is stored as a list of length three:  [PREV, NEXT, KEY].
-
-        def __init__(self, *args, **kwds):
-            '''Initialize an ordered dictionary.  Signature is the same as for
-            regular dictionaries, but keyword arguments are not recommended
-            because their insertion order is arbitrary.
-
-            '''
-            if len(args) > 1:
-                raise TypeError('expected at most 1 arguments, got %d' %
-                                len(args))
-            try:
-                self.__root
-            except AttributeError:
-                self.__root = root = [None, None, None]     # sentinel node
-                PREV = 0
-                NEXT = 1
-                root[PREV] = root[NEXT] = root
-                self.__map = {}
-            self.update(*args, **kwds)
-
-        def __setitem__(self, key, value, PREV=0, NEXT=1,
-                        dict_setitem=dict.__setitem__):
-            'od.__setitem__(i, y) <==> od[i]=y'
-            # Setting a new item creates a new link which goes at the end
-            # of the linked list, and the inherited dictionary is updated
-            # with the new key/value pair.
-            if key not in self:
-                root = self.__root
-                last = root[PREV]
-                last[NEXT] = root[PREV] = self.__map[key] = [last, root, key]
-            dict_setitem(self, key, value)
-
-        def __delitem__(self, key, PREV=0, NEXT=1,
-                        dict_delitem=dict.__delitem__):
-            'od.__delitem__(y) <==> del od[y]'
-            # Deleting an existing item uses self.__map to find the link
-            # which is then removed by updating the links in the
-            # predecessor and successor nodes.
-            dict_delitem(self, key)
-            link = self.__map.pop(key)
-            link_prev = link[PREV]
-            link_next = link[NEXT]
-            link_prev[NEXT] = link_next
-            link_next[PREV] = link_prev
-
-        def __iter__(self, NEXT=1, KEY=2):
-            'od.__iter__() <==> iter(od)'
-            # Traverse the linked list in order.
-            root = self.__root
-            curr = root[NEXT]
-            while curr is not root:
-                yield curr[KEY]
-                curr = curr[NEXT]
-
-        def __reversed__(self, PREV=0, KEY=2):
-            'od.__reversed__() <==> reversed(od)'
-            # Traverse the linked list in reverse order.
-            root = self.__root
-            curr = root[PREV]
-            while curr is not root:
-                yield curr[KEY]
-                curr = curr[PREV]
-
-        def __reduce__(self):
-            'Return state information for pickling'
-            items = [[k, self[k]] for k in self]
-            tmp = self.__map, self.__root
-            del self.__map, self.__root
-            inst_dict = vars(self).copy()
-            self.__map, self.__root = tmp
-            if inst_dict:
-                return (self.__class__, (items,), inst_dict)
-            return self.__class__, (items,)
-
-        def clear(self):
-            'od.clear() -> None.  Remove all items from od.'
-            try:
-                for node in self.__map.itervalues():
-                    del node[:]
-                self.__root[:] = [self.__root, self.__root, None]
-                self.__map.clear()
-            except AttributeError:
-                pass
-            dict.clear(self)
-
-        setdefault = collections.MutableMapping.setdefault
-        update = collections.MutableMapping.update
-        pop = collections.MutableMapping.pop
-        keys = collections.MutableMapping.keys
-        values = collections.MutableMapping.values
-        items = collections.MutableMapping.items
-        iterkeys = collections.MutableMapping.iterkeys
-        itervalues = collections.MutableMapping.itervalues
-        iteritems = collections.MutableMapping.iteritems
-        __ne__ = collections.MutableMapping.__ne__
-
-        def popitem(self, last=True):
-            '''od.popitem() -> (k, v), return and remove a (key, value) pair.
-            Pairs are returned in LIFO order if last is true or FIFO order if
-            false.
-
-            '''
-            if not self:
-                raise KeyError('dictionary is empty')
-            key = next(reversed(self) if last else iter(self))
-            value = self.pop(key)
-            return key, value
-
-        def __repr__(self):
-            'od.__repr__() <==> repr(od)'
-            if not self:
-                return '%s()' % (self.__class__.__name__,)
-            return '%s(%r)' % (self.__class__.__name__, self.items())
-
-        def copy(self):
-            'od.copy() -> a shallow copy of od'
-            return self.__class__(self)
-
-        @classmethod
-        def fromkeys(cls, iterable, value=None):
-            '''OD.fromkeys(S[, v]) -> New ordered dictionary with keys from S
-            and values equal to v (which defaults to None).
-
-            '''
-            d = cls()
-            for key in iterable:
-                d[key] = value
-            return d
-
-        def __eq__(self, other):
-            '''od.__eq__(y) <==> od==y.  Comparison to another OD is
-            order-sensitive while comparison to a regular mapping is
-            order-insensitive.
-
-            '''
-            if isinstance(other, OrderedDict):
-                return (len(self) == len(other) and
-                        all(_imap(_eq, self.iteritems(), other.iteritems())))
-            return dict.__eq__(self, other)
-
-        def __del__(self):
-            self.clear()                # eliminate cyclical references
+import argparse
 
 
-    class LimitConfigParser(ConfigParser.SafeConfigParser, object):
-        def __init__(self, defaults=None, dict_type=OrderedDict):
-            super(LimitConfigParser, self).__init__(defaults, dict_type)
-
-
-# We need the utils from turnstile
+# We need the database module and the utils from turnstile
 poss_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
                                             os.pardir,
                                             os.pardir))
@@ -189,26 +17,36 @@ if os.path.exists(os.path.join(poss_topdir, 'turnstile', '__init__.py')):
     sys.path.insert(0, poss_topdir)
 
 
+from turnstile import database
 from turnstile import utils
 
 
-def get_limit(db, class_str, items):
+def parse_limit(db, idx, limit):
     # First, try to import the class; this will raise ImportError if
     # we can't import it
-    klass = utils.import_class(class_str)
+    klass = utils.import_class(limit.get('class'))
 
     # Build the list of required attributes
     required = set(k for k, v in klass.attrs.items()
                    if 'default' not in v)
 
-    # Now, use introspection on the class to collect the attributes
+    # Now, use introspection on the class to interpret the attributes
     attrs = {}
-    for attr, value in items:
+    for child in limit:
+        # Basic validation of child elements
+        if child.tag != 'attr':
+            warnings.warn("Unrecognized element %r while parsing limit at "
+                          "index %d; ignoring..." % (child.tag, idx))
+            continue
+
+        # Get the attribute name
+        attr = child.get('name')
+
         # Be liberal in what we accept--ignore unrecognized attributes
         # (with a warning)
         if attr not in klass.attrs:
-            warnings.warn("Limit class %r does not accept an attribute %r; "
-                          "ignoring..." % (class_str, attr))
+            warnings.warn("Limit at index %d does not accept an attribute "
+                          "%r; ignoring..." % (idx, attr))
             continue
 
         # OK, get the attribute descriptor
@@ -218,20 +56,50 @@ def get_limit(db, class_str, items):
         attr_type = desc.get('type', str)
 
         if attr_type == list:
-            # Split lists on whitespace
+            # Lists are expressed as child elements; we ignore the
+            # child element names
             subtype = desc.get('subtype', str)
-            value = [subtype(v) for v in value.split()]
+            value = []
+            for grandchild in child:
+                if grandchild.tag != 'value':
+                    warnings.warn("Unrecognized element %r while parsing "
+                                  "%r attribute of limit at index %d; "
+                                  "ignoring..." %
+                                  (grandchild.tag, attr, idx))
+                    continue
+
+                value.append(subtype(grandchild.text))
+
+            if len(value) <= 0:
+                warnings.warn("Limit at index %d: Missing child elements "
+                              "for attribute %r" % (idx, attr))
         elif attr_type == dict:
-            # Split dicts on whitespace and treat as key=value pairs
+            # Dicts are expressed as child elements, with the tags
+            # identifying the attribute name
             subtype = desc.get('subtype', str)
-            result = {}
-            for keyval in value.split():
-                key, _sep, val = keyval.partition('=')
-                result[key] = val
-            value = result
+            value = {}
+            for grandchild in child:
+                if grandchild.tag != 'value':
+                    warnings.warn("Unrecognized element %r while parsing "
+                                  "%r attribute of limit at index %d; "
+                                  "ignoring..." %
+                                  (grandchild.tag, attr, idx))
+                    continue
+                elif 'key' not in grandchild.attrib:
+                    warnings.warn("Missing 'key' attribute of 'value' "
+                                  "element while parsing %r attribute of "
+                                  "limit at index %d; ignoring..." %
+                                  (attr, idx))
+                    continue
+
+                value[grandchild.get('key')] = subtype(grandchild.text)
+
+            if len(value) <= 0:
+                warnings.warn("Limit at index %d: Missing child elements "
+                              "for attribute %r" % (idx, attr))
         else:
             # Simple type conversion
-            value = attr_type(value)
+            value = attr_type(child.text)
 
         # Save the attribute
         attrs[attr] = value
@@ -241,9 +109,136 @@ def get_limit(db, class_str, items):
 
     # Did we get all required attributes?
     if required:
-        raise TypeError("Limit class %r: Missing required attributes %s" %
-                        (class_str,
-                         ', '.join(repr(a) for a in sorted(required))))
+        raise TypeError("Missing required attributes %s" %
+                        (', '.join(repr(a) for a in sorted(required))))
 
     # OK, instantiate and return the class
     return klass(db, **attrs)
+
+
+def main(config, limits_file, do_reload=True, dry_run=False, debug=False):
+    # If dry_run is set, default debug to True
+    if dry_run:
+        debug = True
+
+    # Instantiate the config parser
+    cp = ConfigParser.SafeConfigParser()
+
+    # Read the limits from the file
+    cp.read(config)
+
+    # Make sure we have a database section
+    if not cp.has_section('connection'):
+        raise Exception("Missing [connection] section from %r" % config)
+
+    # Parse the limits file
+    limits_tree = ElementTree.parse(limits_file)
+
+    # Get the database configuration...
+    config = dict(cp.items('connection'))
+    limits_key = config.pop('limits_key', 'limits')
+    control_channel = config.pop('control_channel', 'control')
+
+    # Get the database connection
+    db = database.initialize(config)
+
+    # Now, we parse the limits XML file
+    limits = []
+    for idx, limit in enumerate(limits_tree.getroot()):
+        # Skip tags we don't recognize
+        if limit.tag != 'limit':
+            if debug:
+                print >>sys.stderr, ("Unrecognized tag %r in limits file" %
+                                     limit.tag)
+            continue
+
+        # Construct the limit and add it to the list of limits
+        try:
+            limits.append(parse_limit(db, idx, limit))
+        except Exception as exc:
+            warnings.warn("Couldn't understand limit at index %d: %s" %
+                          (idx, exc))
+            continue
+
+    # Now that we have the limits, let's install them
+    if debug:
+        print >>sys.stderr, "Installing the following limits:"
+        for lim in limits:
+            print >>sys.stderr, "  %r" % lim
+    if not dry_run:
+        db.limit_update(limits_key, limits)
+
+    # Were we requested to reload the limits?
+    if do_reload is False:
+        return
+
+    # OK, figure out what kind of reload to do
+    params = []
+    if do_reload is True:
+        # Nothing to do; use default semantics
+        pass
+    elif (isinstance(do_reload, (int, long, float)) or
+          (isinstance(do_reload, basestring) and do_reload.isdigit())):
+        params = ['spread', do_reload]
+    else:
+        params = [str(do_reload)]
+
+    # Issue the reload command
+    if debug:
+        cmd = ['reload']
+        cmd.extend(params)
+        print >>sys.stderr, ("Issuing command: %s" %
+                             ' '.join(str(c) for c in cmd))
+    if not dry_run:
+        db.command(control_channel, 'reload', *params)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description="Set up or update limits in the Redis database."
+        )
+
+    parser.add_argument('config',
+                        help="Name of the configuration file, for connecting "
+                        "to the Redis database.")
+    parser.add_argument('limits_file',
+                        help="Name of the XML file describing the limits to "
+                        "configure.")
+    parser.add_argument('--debug', '-d',
+                        dest='debug',
+                        action='store_true',
+                        default=False,
+                        help="Run the tool in debug mode.")
+    parser.add_argument('--dryrun', '--dry_run', '--dry-run', '-n',
+                        dest='dry_run',
+                        action='store_true',
+                        default=False,
+                        help="Perform a dry run; inhibits loading data into "
+                        "the database.")
+    parser.add_argument('--noreload', '-R',
+                        dest='reload',
+                        action='store_false',
+                        default=True,
+                        help="Inhibit issuing a reload command.")
+    parser.add_argument('--reload-immediate', '-r',
+                        dest='reload',
+                        action='store_const',
+                        const='immediate',
+                        help="Cause all nodes to immediately reload the "
+                        "limits configuration.")
+    parser.add_argument('--reload-spread', '-s',
+                        dest='reload',
+                        metavar='SECS',
+                        type=float,
+                        action='store',
+                        help="Cause all nodes to reload the limits "
+                        "configuration over the specified number of seconds.")
+
+    args = parser.parse_args()
+    try:
+        main(args.config, args.limits_file, args.reload, args.dry_run,
+             args.debug)
+    except Exception as exc:
+        if args.debug:
+            raise
+        sys.exit(str(exc))
