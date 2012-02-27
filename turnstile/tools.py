@@ -164,18 +164,18 @@ def _setup_limits(config, limits_file, do_reload=True,
     db = database.initialize(config)
 
     # Now, we parse the limits XML file
-    limits = []
-    for idx, limit in enumerate(limits_tree.getroot()):
+    lims = []
+    for idx, lim in enumerate(limits_tree.getroot()):
         # Skip tags we don't recognize
-        if limit.tag != 'limit':
+        if lim.tag != 'limit':
             if debug:
                 print >>sys.stderr, ("Unrecognized tag %r in limits file" %
-                                     limit.tag)
+                                     lim.tag)
             continue
 
         # Construct the limit and add it to the list of limits
         try:
-            limits.append(parse_limit_node(db, idx, limit))
+            lims.append(parse_limit_node(db, idx, lim))
         except Exception as exc:
             warnings.warn("Couldn't understand limit at index %d: %s" %
                           (idx, exc))
@@ -184,10 +184,10 @@ def _setup_limits(config, limits_file, do_reload=True,
     # Now that we have the limits, let's install them
     if debug:
         print >>sys.stderr, "Installing the following limits:"
-        for lim in limits:
+        for lim in lims:
             print >>sys.stderr, "  %r" % lim
     if not dry_run:
-        db.limit_update(limits_key, limits)
+        db.limit_update(limits_key, lims)
 
     # Were we requested to reload the limits?
     if do_reload is False:
