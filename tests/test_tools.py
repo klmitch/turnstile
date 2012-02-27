@@ -8,6 +8,7 @@ from lxml import etree
 import msgpack
 
 from turnstile import database
+from turnstile import limits
 from turnstile import tools
 
 import tests
@@ -54,6 +55,9 @@ class FakeLimit(tests.GenericFakeClass):
 
     def __getattr__(self, attr):
         return self.kwargs[attr]
+
+    def __repr__(self):
+        return repr(self.kwargs)
 
 
 class FakeConfigParser(object):
@@ -615,3 +619,242 @@ class BaseToolTest(tests.TestCase):
 
         self.stubs.Set(tools, 'parse_config', fake_parse_config)
         self.stubs.Set(sys, 'stderr', self.stderr)
+
+
+class TestToolSetupLimits(BaseToolTest):
+    def setUp(self):
+        super(TestToolSetupLimits, self).setUp()
+
+        self.fail_idx = None
+        self.parsed = []
+        self.lims = None
+        self.cmds = []
+
+        def fake_parse_limit_node(db, idx, lim):
+            lim_id = lim.get('id')
+
+            self.parsed.append((idx, lim_id))
+            if idx == self.fail_idx:
+                raise Exception("Failed to parse")
+
+            return "Limit %s" % lim_id
+
+        def fake_limit_update(db, limits_key, lims):
+            self.assertEqual(limits_key, 'limits')
+            self.lims = lims
+
+        def fake_command(db, control_channel, command, *params):
+            self.assertEqual(control_channel, 'control')
+            self.cmds.append((command, params))
+
+        self.stubs.Set(tools, 'parse_limit_node', fake_parse_limit_node)
+        self.stubs.Set(FakeDatabase, 'limit_update', fake_limit_update)
+        self.stubs.Set(FakeDatabase, 'command', fake_command)
+
+    def test_basic(self):
+        limits_file = StringIO.StringIO("""<limits>
+    <limit id="0"/>
+    <limit id="1"/>
+</limits>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            tools._setup_limits('config.file', limits_file)
+
+            self.assertEqual(len(w), 0)
+
+        self.assertEqual(self.parsed, [(0, "0"), (1, "1")])
+        self.assertEqual(self.lims, ["Limit 0", "Limit 1"])
+        self.assertEqual(self.cmds, [("reload", ())])
+        self.assertEqual(self.stderr.getvalue(), '')
+
+    def test_basic_debug(self):
+        limits_file = StringIO.StringIO("""<limits>
+    <limit id="0"/>
+    <limit id="1"/>
+</limits>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            tools._setup_limits('config.file', limits_file, debug=True)
+
+            self.assertEqual(len(w), 0)
+
+        self.assertEqual(self.parsed, [(0, "0"), (1, "1")])
+        self.assertEqual(self.lims, ["Limit 0", "Limit 1"])
+        self.assertEqual(self.cmds, [("reload", ())])
+        self.assertEqual(self.stderr.getvalue(),
+                         "Installing the following limits:\n"
+                         "  'Limit 0'\n"
+                         "  'Limit 1'\n"
+                         "Issuing command: reload\n")
+
+    def test_basic_dryrun(self):
+        limits_file = StringIO.StringIO("""<limits>
+    <limit id="0"/>
+    <limit id="1"/>
+</limits>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            tools._setup_limits('config.file', limits_file, dry_run=True)
+
+            self.assertEqual(len(w), 0)
+
+        self.assertEqual(self.parsed, [(0, "0"), (1, "1")])
+        self.assertEqual(self.lims, None)
+        self.assertEqual(self.cmds, [])
+        self.assertEqual(self.stderr.getvalue(),
+                         "Installing the following limits:\n"
+                         "  'Limit 0'\n"
+                         "  'Limit 1'\n"
+                         "Issuing command: reload\n")
+
+    def test_reload_false(self):
+        limits_file = StringIO.StringIO("""<limits>
+    <limit id="0"/>
+    <limit id="1"/>
+</limits>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            tools._setup_limits('config.file', limits_file, do_reload=False)
+
+            self.assertEqual(len(w), 0)
+
+        self.assertEqual(self.parsed, [(0, "0"), (1, "1")])
+        self.assertEqual(self.lims, ['Limit 0', 'Limit 1'])
+        self.assertEqual(self.cmds, [])
+        self.assertEqual(self.stderr.getvalue(), "")
+
+    def test_reload_string(self):
+        limits_file = StringIO.StringIO("""<limits>
+    <limit id="0"/>
+    <limit id="1"/>
+</limits>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            tools._setup_limits('config.file', limits_file, do_reload='spam')
+
+            self.assertEqual(len(w), 0)
+
+        self.assertEqual(self.parsed, [(0, "0"), (1, "1")])
+        self.assertEqual(self.lims, ['Limit 0', 'Limit 1'])
+        self.assertEqual(self.cmds, [('reload', ('spam',))])
+        self.assertEqual(self.stderr.getvalue(), "")
+
+    def test_reload_int(self):
+        limits_file = StringIO.StringIO("""<limits>
+    <limit id="0"/>
+    <limit id="1"/>
+</limits>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            tools._setup_limits('config.file', limits_file, do_reload=5)
+
+            self.assertEqual(len(w), 0)
+
+        self.assertEqual(self.parsed, [(0, "0"), (1, "1")])
+        self.assertEqual(self.lims, ['Limit 0', 'Limit 1'])
+        self.assertEqual(self.cmds, [('reload', ('spread', 5))])
+        self.assertEqual(self.stderr.getvalue(), "")
+
+    def test_reload_float(self):
+        limits_file = StringIO.StringIO("""<limits>
+    <limit id="0"/>
+    <limit id="1"/>
+</limits>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            tools._setup_limits('config.file', limits_file, do_reload=3.14)
+
+            self.assertEqual(len(w), 0)
+
+        self.assertEqual(self.parsed, [(0, "0"), (1, "1")])
+        self.assertEqual(self.lims, ['Limit 0', 'Limit 1'])
+        self.assertEqual(self.cmds, [('reload', ('spread', 3.14))])
+        self.assertEqual(self.stderr.getvalue(), "")
+
+    def test_bad_tag(self):
+        limits_file = StringIO.StringIO("""<limits>
+    <timil id="0"/>
+    <limit id="1"/>
+</limits>""")
+
+        with warnings.catch_warnings(record=True) as w:
+            tools._setup_limits('config.file', limits_file)
+
+            self.assertEqual(len(w), 1)
+            self.assertIn("Unrecognized tag 'timil' in limits file at index 0",
+                          w[-1].message)
+
+        self.assertEqual(self.parsed, [(1, "1")])
+        self.assertEqual(self.lims, ['Limit 1'])
+        self.assertEqual(self.cmds, [('reload', ())])
+        self.assertEqual(self.stderr.getvalue(), "")
+
+    def test_bad_limit(self):
+        limits_file = StringIO.StringIO("""<limits>
+    <limit id="0"/>
+    <limit id="1"/>
+    <limit id="2"/>
+</limits>""")
+        self.fail_idx = 1
+
+        with warnings.catch_warnings(record=True) as w:
+            tools._setup_limits('config.file', limits_file)
+
+            self.assertEqual(len(w), 1)
+            self.assertIn("Couldn't understand limit at index 1: Failed to "
+                          "parse", w[-1].message)
+
+        self.assertEqual(self.parsed, [(0, "0"), (1, "1"), (2, "2")])
+        self.assertEqual(self.lims, ['Limit 0', 'Limit 2'])
+        self.assertEqual(self.cmds, [('reload', ())])
+        self.assertEqual(self.stderr.getvalue(), "")
+
+
+class TestToolDumpLimits(BaseToolTest):
+    def setUp(self):
+        super(TestToolDumpLimits, self).setUp()
+
+        self.fakedb._fakedb['limits'] = [
+            (10, dict(name="limit1")),
+            (20, dict(name="limit2")),
+            (30, dict(name="limit3")),
+            ]
+
+        self.limits_file = StringIO.StringIO()
+
+        def fake_make_limit_node(root, lim):
+            etree.SubElement(root, 'limit', name=lim.name)
+
+        self.stubs.Set(tools, 'make_limit_node', fake_make_limit_node)
+        self.stubs.Set(msgpack, 'loads', lambda x: x)
+        self.stubs.Set(limits, 'Limit', FakeLimit)
+
+    def test_basic(self):
+        tools._dump_limits('config.file', self.limits_file)
+
+        self.assertEqual(self.limits_file.getvalue(),
+                         """<?xml version='1.0' encoding='UTF-8'?>
+<limits>
+  <limit name="limit1"/>
+  <limit name="limit2"/>
+  <limit name="limit3"/>
+</limits>
+""")
+        self.assertEqual(self.stderr.getvalue(), "")
+
+    def test_debug(self):
+        tools._dump_limits('config.file', self.limits_file, debug=True)
+
+        self.assertEqual(self.limits_file.getvalue(),
+                         """<?xml version='1.0' encoding='UTF-8'?>
+<limits>
+  <limit name="limit1"/>
+  <limit name="limit2"/>
+  <limit name="limit3"/>
+</limits>
+""")
+        self.assertTrue(self.stderr.getvalue().startswith(
+                """Dumping limit index 0: {'name': 'limit1'}
+Dumping limit index 1: {'name': 'limit2'}
+Dumping limit index 2: {'name': 'limit3'}
+Dumping limits to file """))
