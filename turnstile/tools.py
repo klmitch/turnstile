@@ -183,8 +183,8 @@ def _setup_limits(config, limits_file, do_reload=True,
         # Skip tags we don't recognize
         if lim.tag != 'limit':
             if debug:
-                print >>sys.stderr, ("Unrecognized tag %r in limits file" %
-                                     lim.tag)
+                print >>sys.stderr, ("Unrecognized tag %r in limits file at "
+                                     "index %d" % (lim.tag, idx))
             continue
 
         # Construct the limit and add it to the list of limits
