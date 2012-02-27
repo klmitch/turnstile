@@ -66,7 +66,7 @@ class FakeConfigParser(object):
                 limits_key='alternate',
                 ),
             ),
-        alt_control = dict(
+        alt_control=dict(
             connection=dict(
                 control_channel='alternate',
                 ),
