@@ -12,6 +12,35 @@ from turnstile import limits
 from turnstile import utils
 
 
+def parse_config(config):
+    """
+    Parses the connection configuration file.  Establishes a
+    connection to the database and returns it, along with the limits
+    key and the control channel name, as a tuple.
+
+    :param config: Name of the configuration file, for connecting to
+                   the Redis database.
+    """
+
+    # Instantiate the config parser
+    cp = ConfigParser.SafeConfigParser()
+
+    # Read the limits from the file
+    cp.read(config)
+
+    # Make sure we have a connection section
+    if not cp.has_section('connection'):
+        raise Exception("Missing [connection] section from %r" % config)
+
+    # Get the database configuration...
+    db_config = dict(cp.items('connection'))
+    limits_key = db_config.pop('limits_key', 'limits')
+    control_channel = db_config.pop('control_channel', 'control')
+
+    # Get the database connection
+    return database.initialize(db_config), limits_key, control_channel
+
+
 def parse_limit_node(db, idx, limit):
     """
     Given an XML node describing a limit, return a Limit object.
@@ -142,26 +171,11 @@ def _setup_limits(config, limits_file, do_reload=True,
     if dry_run:
         debug = True
 
-    # Instantiate the config parser
-    cp = ConfigParser.SafeConfigParser()
-
-    # Read the limits from the file
-    cp.read(config)
-
-    # Make sure we have a connection section
-    if not cp.has_section('connection'):
-        raise Exception("Missing [connection] section from %r" % config)
+    # Connect to the database...
+    db, limits_key, control_channel = parse_config(config)
 
     # Parse the limits file
     limits_tree = etree.parse(limits_file)
-
-    # Get the database configuration...
-    config = dict(cp.items('connection'))
-    limits_key = config.pop('limits_key', 'limits')
-    control_channel = config.pop('control_channel', 'control')
-
-    # Get the database connection
-    db = database.initialize(config)
 
     # Now, we parse the limits XML file
     lims = []
@@ -324,23 +338,8 @@ def _dump_limits(config, limits_file, debug=False):
                   dumping the limits.
     """
 
-    # Instantiate the config parser
-    cp = ConfigParser.SafeConfigParser()
-
-    # Read the limits from the file
-    cp.read(config)
-
-    # Make sure we have a connection section
-    if not cp.has_section('connection'):
-        raise Exception("Missing [connection] section from %r" % config)
-
-    # Get the database configuration...
-    config = dict(cp.items('connection'))
-    limits_key = config.pop('limits_key', 'limits')
-    control_channel = config.pop('control_channel', 'control')
-
-    # Get the database connection
-    db = database.initialize(config)
+    # Connect to the database...
+    db, limits_key, _control_channel = parse_config(config)
 
     # Now, grab all the limits
     lims = [limits.Limit.hydrate(db, msgpack.loads(lim))
