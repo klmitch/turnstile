@@ -305,7 +305,7 @@ def make_limit_node(root, limit):
                 val_node = etree.SubElement(attr_node, 'value')
                 val_node.text = str(val)
         elif attr_type == dict:
-            for key, val in value.items():
+            for key, val in sorted(value.items(), key=lambda x: x[0]):
                 val_node = etree.SubElement(attr_node, 'value', key=key)
                 val_node.text = str(val)
         else:
