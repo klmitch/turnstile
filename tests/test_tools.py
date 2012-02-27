@@ -1,5 +1,6 @@
 import ConfigParser
 import StringIO
+import sys
 import warnings
 
 import argparse
@@ -59,15 +60,19 @@ class FakeConfigParser(object):
     _cfg_options = dict(
         bad_config={},
         good_config=dict(
-            connection={},
+            connection=dict(
+                host='example.com',
+                ),
             ),
         alt_limits=dict(
             connection=dict(
+                host='example.com',
                 limits_key='alternate',
                 ),
             ),
         alt_control=dict(
             connection=dict(
+                host='example.com',
                 control_channel='alternate',
                 ),
             ),
@@ -563,16 +568,50 @@ class TestConsoleDumpLimits(ConsoleScriptsTestCase):
                          (('config', 'limits.xml', True), {}))
 
 
+class TestParseConfig(tests.TestCase):
+    def setUp(self):
+        super(TestParseConfig, self).setUp()
+
+        def fake_initialize(cfg):
+            return cfg
+
+        self.stubs.Set(database, 'initialize', fake_initialize)
+        self.stubs.Set(ConfigParser, 'SafeConfigParser', FakeConfigParser)
+
+    def test_basic(self):
+        result = tools.parse_config('good_config')
+
+        self.assertEqual(result,
+                         (dict(host='example.com'), 'limits', 'control'))
+
+    def test_alt_limits(self):
+        result = tools.parse_config('alt_limits')
+
+        self.assertEqual(result,
+                         (dict(host='example.com'), 'alternate', 'control'))
+
+    def test_alt_control(self):
+        result = tools.parse_config('alt_control')
+
+        self.assertEqual(result,
+                         (dict(host='example.com'), 'limits', 'alternate'))
+
+    def test_missing_connection(self):
+        with self.assertRaises(Exception):
+            result = tools.parse_config('bad_config')
+
+
 class BaseToolTest(tests.TestCase):
     def setUp(self):
         super(BaseToolTest, self).setUp()
 
-        self.config = None
         self.fakedb = FakeDatabase()
+        self.stderr = StringIO.StringIO()
 
-        def fake_initialize(cfg):
-            self.config = cfg
-            return self.fakedb
+        def fake_parse_config(config):
+            self.assertEqual(config, 'config.file')
 
-        self.stubs.Set(database, 'initialize', fake_initialize)
-        self.stubs.Set(ConfigParser, 'SafeConfigParser', FakeConfigParser)
+            return self.fakedb, 'limits', 'control'
+
+        self.stubs.Set(tools, 'parse_config', fake_parse_config)
+        self.stubs.Set(sys, 'stderr', self.stderr)
