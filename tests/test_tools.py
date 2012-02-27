@@ -94,14 +94,12 @@ class FakeNamespace(object):
     debug = False
 
 
-class FakeArgumentParser(tests.GenericFakeClass):
+class FakeArgumentParser(object):
     def __init__(self, *args, **kwargs):
-        super(FakeArgumentParser, self).__init__(*args, **kwargs)
-
-        self.arguments = []
+        pass
 
     def add_argument(self, *args, **kwargs):
-        self.arguments.append((args, kwargs))
+        pass
 
     def parse_args(self):
         return FakeNamespace()
@@ -112,21 +110,6 @@ class FakeArgumentParserDebug(FakeArgumentParser):
         ns = super(FakeArgumentParserDebug, self).parse_args()
         ns.debug = True
         return ns
-
-
-class BaseToolTest(tests.TestCase):
-    def setUp(self):
-        super(BaseToolTest, self).setUp()
-
-        self.config = None
-        self.fakedb = FakeDatabase()
-
-        def fake_initialize(cfg):
-            self.config = cfg
-            return self.fakedb
-
-        self.stubs.Set(database, 'initialize', fake_initialize)
-        self.stubs.Set(ConfigParser, 'SafeConfigParser', FakeConfigParser)
 
 
 class TestParseLimitNode(tests.TestCase):
@@ -494,3 +477,102 @@ class TestMakeLimitNode(tests.TestCase):
                         '</attr>'
                         '<attr name="required">required</attr>'
                         '</limit>')
+
+
+class ConsoleScriptsTestCase(tests.TestCase):
+    def setUp(self):
+        super(ConsoleScriptsTestCase, self).setUp()
+
+        self.result = None
+        self.subargs = None
+
+        def fake_subroutine(*args, **kwargs):
+            self.subargs = (args, kwargs)
+
+            if isinstance(self.result, Exception):
+                raise self.result
+            return self.result
+
+        self.stubs.Set(tools, '_%s' % self.subroutine.__name__,
+                       fake_subroutine)
+
+    def stub_argparse(self, debug=False):
+        cls = FakeArgumentParserDebug if debug else FakeArgumentParser
+        self.stubs.Set(argparse, 'ArgumentParser', cls)
+
+
+class TestConsoleSetupLimits(ConsoleScriptsTestCase):
+    subroutine = staticmethod(tools.setup_limits)
+
+    def test_basic(self):
+        self.stub_argparse()
+        res = self.subroutine()
+
+        self.assertEqual(res, None)
+        self.assertEqual(self.subargs,
+                         (('config', 'limits.xml', False, True, False), {}))
+
+    def test_exception(self):
+        self.stub_argparse()
+        self.result = Exception("An error occurred")
+        res = self.subroutine()
+
+        self.assertEqual(res, "An error occurred")
+        self.assertEqual(self.subargs,
+                         (('config', 'limits.xml', False, True, False), {}))
+
+    def test_exception_debug(self):
+        self.stub_argparse(True)
+        self.result = Exception("An error occurred")
+
+        with self.assertRaises(Exception):
+            res = self.subroutine()
+
+        self.assertEqual(self.subargs,
+                         (('config', 'limits.xml', False, True, True), {}))
+
+
+class TestConsoleDumpLimits(ConsoleScriptsTestCase):
+    subroutine = staticmethod(tools.dump_limits)
+
+    def test_basic(self):
+        self.stub_argparse()
+        res = self.subroutine()
+
+        self.assertEqual(res, None)
+        self.assertEqual(self.subargs,
+                         (('config', 'limits.xml', False), {}))
+
+    def test_exception(self):
+        self.stub_argparse()
+        self.result = Exception("An error occurred")
+        res = self.subroutine()
+
+        self.assertEqual(res, "An error occurred")
+        self.assertEqual(self.subargs,
+                         (('config', 'limits.xml', False), {}))
+
+    def test_exception_debug(self):
+        self.stub_argparse(True)
+        self.result = Exception("An error occurred")
+
+        with self.assertRaises(Exception):
+            res = self.subroutine()
+
+        self.assertEqual(self.subargs,
+                         (('config', 'limits.xml', True), {}))
+
+
+class BaseToolTest(tests.TestCase):
+    def setUp(self):
+        super(BaseToolTest, self).setUp()
+
+        self.config = None
+        self.fakedb = FakeDatabase()
+
+        def fake_initialize(cfg):
+            self.config = cfg
+            return self.fakedb
+
+        self.stubs.Set(database, 'initialize', fake_initialize)
+        self.stubs.Set(ConfigParser, 'SafeConfigParser', FakeConfigParser)
