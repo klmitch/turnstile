@@ -199,6 +199,9 @@ class TurnstileMiddleware(object):
             # limit classes.
             preproc(self, environ)
 
+        # Make configuration available to the limit classes as well
+        environ['turnstile.config'] = self.config
+
         # Now, if we have a mapper, run through it
         if self.mapper:
             self.mapper.routematch(environ=environ)
