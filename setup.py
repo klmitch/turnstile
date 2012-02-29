@@ -39,7 +39,7 @@ setup(
         'eventlet',
         'lxml',
         'metatools',
-        'msgpack',
+        'msgpack-python',
         'redis',
         'routes',
         ],
