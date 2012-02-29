@@ -486,6 +486,9 @@ class Limit(object):
         params, but which should not be used to look up the bucket,
         may be returned as a dictionary.  If this limit should not be
         applied to this request, raise DeferLimit.
+
+        Note that the Turnstile configuration is available in the
+        environment under the "turnstile.config" key.
         """
 
         pass
