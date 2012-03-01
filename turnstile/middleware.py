@@ -213,18 +213,27 @@ class TurnstileMiddleware(object):
             delay, limit, bucket = sorted(environ['turnstile.delay'],
                                           key=lambda x: x[0])[-1]
 
-            # Set up the default status
-            status = self.config[None]['status']
-
-            # Set up the retry-after header...
-            headers = HeadersDict([('Retry-After', "%d" % math.ceil(delay))])
-
-            # Let format fiddle with the headers
-            status, entity = limit.format(status, headers, environ, bucket,
-                                          delay)
-
-            # Return the response
-            start_response(status, headers.items())
-            return entity
+            return self.format_delay(delay, limit, bucket,
+                                     environ, start_response)
 
         return self.app(environ, start_response)
+
+    def format_delay(self, delay, limit, bucket, environ, start_response):
+        """
+        Formats the over-limit response for the request.  May be
+        overridden in subclasses to allow alternate responses.
+        """
+
+        # Set up the default status
+        status = self.config[None]['status']
+
+        # Set up the retry-after header...
+        headers = HeadersDict([('Retry-After', "%d" % math.ceil(delay))])
+
+        # Let format fiddle with the headers
+        status, entity = limit.format(status, headers, environ, bucket,
+                                      delay)
+
+        # Return the response
+        start_response(status, headers.items())
+        return entity
