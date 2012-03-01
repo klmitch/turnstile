@@ -149,6 +149,7 @@ class TurnstileMiddleware(object):
 
         # Save the application
         self.app = app
+        self.limits = []
         self.mapper = None
 
         # Split up the configuration into groups of related variables

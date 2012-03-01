@@ -369,6 +369,7 @@ class ControlDaemon(object):
                 lim._route(mapper)
 
             # Install it
+            self._middleware.limits = lims
             self._middleware.mapper = mapper
         except Exception:
             # Log an error
