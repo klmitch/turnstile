@@ -220,7 +220,8 @@ class TurnstileMiddleware(object):
             headers = HeadersDict([('Retry-After', "%d" % math.ceil(delay))])
 
             # Let format fiddle with the headers
-            status, entity = limit.format(status, headers, environ, bucket)
+            status, entity = limit.format(status, headers, environ, bucket,
+                                          delay)
 
             # Return the response
             start_response(status, headers.items())

@@ -493,7 +493,7 @@ class Limit(object):
 
         pass
 
-    def format(self, status, headers, environ, bucket):
+    def format(self, status, headers, environ, bucket, delay):
         """
         Formats a response entity.  Returns a tuple of the desired
         status code and the formatted entity.  The default status code
@@ -511,6 +511,8 @@ class Limit(object):
                        delay decision to be made.  This can be used to
                        obtain such information as the next time the
                        request can be made.
+        :param delay: The number of seconds by which the request
+                      should be delayed.
         """
 
         # This is a default response entity, which can be overridden
