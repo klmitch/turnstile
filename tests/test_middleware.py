@@ -36,10 +36,12 @@ class FakeLimit(object):
         self.headers = headers
         self.environ = None
         self.bucket = None
+        self.delay = None
 
-    def format(self, status, headers, environ, bucket):
+    def format(self, status, headers, environ, bucket, delay):
         self.environ = environ
         self.bucket = bucket
+        self.delay = delay
         if self.headers:
             headers.update(self.headers)
         return status, "Fake Entity for limit %s" % self.ident
@@ -247,7 +249,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         result = mid(environ, response.start)
 
         self.assertEqual(id(mid.mapper.environ), id(environ))
-        self.assertEqual(environ, dict(test=True))
+        self.assertEqual(environ['test'], True)
         self.assertEqual(result, 'app called')
         self.assertEqual(response.status, None)
         self.assertEqual(response.headers, None)
@@ -269,11 +271,8 @@ class TestTurnstileMiddleware(tests.TestCase):
         result = mid(environ, response.start)
 
         self.assertEqual(id(mid.mapper.environ), id(environ))
-        self.assertEqual(environ, {
-                'test': True,
-                'turnstile.preprocess':
-                    ['preproc1', 'preproc2', 'preproc3'],
-                })
+        self.assertEqual(environ['turnstile.preprocess'],
+                         ['preproc1', 'preproc2', 'preproc3'])
         self.assertEqual(result, 'app called')
         self.assertEqual(response.status, None)
         self.assertEqual(response.headers, None)
@@ -295,10 +294,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         result = mid(environ, response.start)
 
         self.assertEqual(id(mid.mapper.environ), id(environ))
-        self.assertEqual(environ, {
-                'test': True,
-                'turnstile.delay': delays,
-                })
+        self.assertEqual(environ['turnstile.delay'], delays)
         self.assertEqual(result, 'Fake Entity for limit limit2')
         self.assertEqual(response.status, '413 Request Entity Too Large')
         self.assertEqual(response.headers, {
@@ -325,10 +321,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         result = mid(environ, response.start)
 
         self.assertEqual(id(mid.mapper.environ), id(environ))
-        self.assertEqual(environ, {
-                'test': True,
-                'turnstile.delay': delays,
-                })
+        self.assertEqual(environ['turnstile.delay'], delays)
         self.assertEqual(result, 'Fake Entity for limit limit1')
         self.assertEqual(response.status, '404 Not Found')
         self.assertEqual(response.headers, {
@@ -351,10 +344,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         result = mid(environ, response.start)
 
         self.assertEqual(id(mid.mapper.environ), id(environ))
-        self.assertEqual(environ, {
-                'test': True,
-                'turnstile.delay': delays,
-                })
+        self.assertEqual(environ['turnstile.delay'], delays)
         self.assertEqual(result, 'Fake Entity for limit limit1')
         self.assertEqual(response.status, '413 Request Entity Too Large')
         self.assertEqual(response.headers, {

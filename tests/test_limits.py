@@ -510,7 +510,7 @@ class TestLimit(tests.TestCase):
         headers = {}
 
         result_status, result_entity = limit.format(status, headers, {},
-                                                    bucket)
+                                                    bucket, 123)
 
         self.assertEqual(result_status, status)
         self.assertEqual(result_entity, expected)
