@@ -143,6 +143,12 @@ status
   ``Retry-After`` header will be the integer number of seconds until
   the request can be retried.)
 
+turnstile
+  If set, identifies an alternate class to use for the Turnstile
+  middleware.  This can be used in conjunction with subclassing
+  ``turnstile.middleware:TurnstileMiddleware``, which may be done to
+  override how over-limit conditions are formatted.
+
 Other configuration values are available to the preprocessors and the
 ``turnstile.limits:Limit`` subclasses, but extreme care should be
 taken that such configurations remain in sync across the entire
