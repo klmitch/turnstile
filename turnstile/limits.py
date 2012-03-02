@@ -436,8 +436,8 @@ class Limit(object):
 
         # If 'use' is set, use only the listed parameters; we'll add
         # the others back later
+        unused = {}
         if self.use is not None:
-            unused = {}
             for key, value in params.items():
                 if key not in self.use:
                     unused[key] = value
@@ -446,8 +446,6 @@ class Limit(object):
             # dictionary during traversal
             for key in unused:
                 del params[key]
-        else:
-            unused = {}
 
         # First, we need to set up any additional params required to
         # get the bucket.  If the DeferLimit exception is thrown, no
