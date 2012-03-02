@@ -130,7 +130,7 @@ def turnstile_filter(global_conf, **local_conf):
     # Select the appropriate middleware class to return
     klass = TurnstileMiddleware
     if 'turnstile' in local_conf:
-        klass = utils.import_class(klass)
+        klass = utils.import_class(local_conf['turnstile'])
 
     def wrapper(app):
         return klass(app, local_conf)

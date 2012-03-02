@@ -19,6 +19,10 @@ def preproc3(mid, environ):
     environ['turnstile.preprocess'].append('preproc3')
 
 
+class FakeMiddleware(tests.GenericFakeClass):
+    pass
+
+
 class FakeMapper(object):
     def __init__(self, delay=None):
         self.delay = delay
@@ -157,6 +161,10 @@ class TestHeadersDict(tests.TestCase):
 
 
 class TestTurnstileFilter(tests.TestCase):
+    imports = {
+        'FakeMiddleware': FakeMiddleware,
+        }
+
     def test_filter_factory(self):
         self.stubs.Set(middleware, 'TurnstileMiddleware',
                        tests.GenericFakeClass)
@@ -167,6 +175,19 @@ class TestTurnstileFilter(tests.TestCase):
         obj = result('app')
         self.assertIsInstance(obj, tests.GenericFakeClass)
         self.assertEqual(obj.args, ('app', dict(foo='value1', bar='value2')))
+
+    def test_filter_factory_alternate_middleware(self):
+        result = middleware.turnstile_filter({}, foo='value1', bar='value2',
+                                             turnstile='FakeMiddleware')
+        self.assertTrue(callable(result))
+
+        obj = result('app')
+        self.assertIsInstance(obj, FakeMiddleware)
+        self.assertEqual(obj.args, ('app', dict(
+                    foo='value1',
+                    bar='value2',
+                    turnstile='FakeMiddleware',
+                    )))
 
 
 class TestTurnstileMiddleware(tests.TestCase):
