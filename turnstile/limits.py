@@ -268,28 +268,9 @@ class Limit(object):
         Initialize a new limit.
 
         :param db: The database the limit object is in.
-        :param uri: A routes-compatible URI specification.  Parsed
-                    keys will be used as part of the cache key.
-        :param value: Integer giving number of requests which can be
-                      made during a unit of time.
-        :param unit: Unit of time over which to limit the number of
-                     requests.  May be an integer (either in native
-                     Python int or a string representation) or one of
-                     the pre-defined units, such as "minute."
-        :param verbs: List of HTTP verbs the limit should be
-                      considered for.  If empty or not specified, all
-                      hits against the specified URI will be limited.
-        :param requirements: Dictionary mapping keys in the URI to
-                             regular expressions.  This allows the URI
-                             to be further restricted during the
-                             matching phase.
-        :param continue_scan: If True and the limit matches the
-                              request (and processing isn't deferred
-                              due to filter() raising DeferLimit), the
-                              remaining limits will be scanned.  This
-                              defaults to True, but may be set to
-                              False to inhibit follow-on limits from
-                              being applied.
+
+        For the permissible keyword arguments, see the `attrs`
+        dictionary.
         """
 
         self.db = db
