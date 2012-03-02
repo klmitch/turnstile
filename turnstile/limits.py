@@ -315,7 +315,7 @@ class Limit(object):
             # Treat lists and dicts specially
             if attr_type == list:
                 sublist = [repr(v) for v in getattr(self, attr)]
-                value = '[%s]' % ','.join(sublist)
+                value = '[%s]' % ', '.join(sublist)
             elif attr_type == dict:
                 sublist = ['%s=%r' % (k, v) for k, v in
                            getattr(self, attr).items()]
