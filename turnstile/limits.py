@@ -255,7 +255,7 @@ class Limit(object):
                   'set of used parameters.'),
             type=list,
             subtype=str,
-            default=lambda: [],  # Make sure we don't use the *same* list
+            default=None,
             ),
         continue_scan=dict(
             desc=('A boolean which signals whether to consider limits '
@@ -436,7 +436,7 @@ class Limit(object):
 
         # If 'use' is set, use only the listed parameters; we'll add
         # the others back later
-        if self.use:
+        if self.use is not None:
             unused = {}
             for key, value in params.items():
                 if key not in self.use:

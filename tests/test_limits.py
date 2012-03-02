@@ -256,7 +256,7 @@ class TestLimit(tests.TestCase):
         self.assertEqual(limit._unit, 1)
         self.assertEqual(limit.verbs, [])
         self.assertEqual(limit.requirements, {})
-        self.assertEqual(limit.use, [])
+        self.assertEqual(limit.use, None)
         self.assertEqual(limit.continue_scan, True)
 
     def test_init_missing_value(self):
@@ -418,6 +418,24 @@ class TestLimit(tests.TestCase):
         self.assertEqual(db.update[3], (limit, key))
         self.assertEqual(id(bucket._params), id(params))
 
+    def test_filter_use_empty(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=[])
+        environ = {}
+        params = dict(param1='spam', param2='ni')
+        result = limit._filter(environ, params)
+
+        key = 'turnstile.limits:Limit'
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, {})
+        self.assertEqual(params, dict(param1='spam', param2='ni'))
+        self.assertEqual(db.update[0], key)
+        self.assertEqual(db.update[1], limits.Bucket)
+        self.assertEqual(db.update[3], (limit, key))
+        self.assertEqual(id(bucket._params), id(params))
+
     def test_filter_defer(self):
         bucket = FakeBucket(None)
         db = FakeDatabase(bucket)
@@ -471,6 +489,32 @@ class TestLimit(tests.TestCase):
         self.assertEqual(result, False)
         self.assertEqual(environ, {
                 'test.filter.unused': dict(param1='spam'),
+                })
+        self.assertEqual(params, dict(
+                param1='spam',
+                param2='ni',
+                filter_add='LimitTest2_direct',
+                additional='LimitTest2_additional',
+                ))
+        self.assertEqual(db.update[0], key)
+        self.assertEqual(db.update[1], limits.Bucket)
+        self.assertEqual(db.update[3], (limit, key))
+        self.assertEqual(id(bucket._params), id(params))
+
+    def test_filter_hook_use_empty(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = LimitTest2(db, uri='uri', value=10, unit=1, use=[])
+        environ = {}
+        params = dict(param1='spam', param2='ni')
+        result = limit._filter(environ, params)
+
+        key = ('tests.test_limits:LimitTest2/'
+               'filter_add=LimitTest2_direct')
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, {
+                'test.filter.unused': dict(param1='spam', param2='ni'),
                 })
         self.assertEqual(params, dict(
                 param1='spam',

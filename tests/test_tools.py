@@ -291,27 +291,6 @@ class TestParseLimitNode(tests.TestCase):
                 list_attr=['ni'],
                 ))
 
-    def test_parse_list_attr_empty(self):
-        limit_xml = """<limit class="FakeLimit">
-    <attr name="list_attr">spam</attr>
-    <attr name="required">spam</attr>
-</limit>"""
-        limit_node = etree.fromstring(limit_xml)
-
-        with warnings.catch_warnings(record=True) as w:
-            limit = tools.parse_limit_node('db', 1, limit_node)
-
-            self.assertEqual(len(w), 1)
-            self.assertIn("Limit at index 1: Missing child elements for "
-                          "attribute 'list_attr'", w[-1].message)
-
-        self.assertIsInstance(limit, FakeLimit)
-        self.assertEqual(limit.args, ('db',))
-        self.assertEqual(limit.kwargs, dict(
-                required='spam',
-                list_attr=[],
-                ))
-
     def test_parse_dict_attr(self):
         limit_xml = """<limit class="FakeLimit">
     <attr name="dict_attr">
@@ -382,27 +361,6 @@ class TestParseLimitNode(tests.TestCase):
         self.assertEqual(limit.kwargs, dict(
                 required='spam',
                 dict_attr=dict(bar='ni'),
-                ))
-
-    def test_parse_dict_attr_empty(self):
-        limit_xml = """<limit class="FakeLimit">
-    <attr name="dict_attr">spam</attr>
-    <attr name="required">spam</attr>
-</limit>"""
-        limit_node = etree.fromstring(limit_xml)
-
-        with warnings.catch_warnings(record=True) as w:
-            limit = tools.parse_limit_node('db', 1, limit_node)
-
-            self.assertEqual(len(w), 1)
-            self.assertIn("Limit at index 1: Missing child elements for "
-                          "attribute 'dict_attr'", w[-1].message)
-
-        self.assertIsInstance(limit, FakeLimit)
-        self.assertEqual(limit.args, ('db',))
-        self.assertEqual(limit.kwargs, dict(
-                required='spam',
-                dict_attr={},
                 ))
 
 

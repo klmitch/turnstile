@@ -113,10 +113,6 @@ def parse_limit_node(db, idx, limit):
                     continue
 
                 value.append(subtype(grandchild.text))
-
-            if len(value) <= 0:
-                warnings.warn("Limit at index %d: Missing child elements "
-                              "for attribute %r" % (idx, attr))
         elif attr_type == dict:
             # Dicts are expressed as child elements, with the tags
             # identifying the attribute name
@@ -137,10 +133,6 @@ def parse_limit_node(db, idx, limit):
                     continue
 
                 value[grandchild.get('key')] = subtype(grandchild.text)
-
-            if len(value) <= 0:
-                warnings.warn("Limit at index %d: Missing child elements "
-                              "for attribute %r" % (idx, attr))
         else:
             # Simple type conversion
             value = attr_type(child.text)
