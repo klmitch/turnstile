@@ -168,8 +168,9 @@ class LimitTest2(limits.Limit):
             default=''))
     skip = set(['test_skip'])
 
-    def route(self, route_args):
+    def route(self, uri, route_args):
         route_args['route_add'] = 'LimitTest2'
+        return 'mod_%s' % uri
 
     def filter(self, environ, params, unused):
         if 'defer' in environ:
@@ -373,7 +374,7 @@ class TestLimit(tests.TestCase):
             conditions=dict(function=limit._filter),
             route_add='LimitTest2',
             )
-        self.assertEqual(mapper.routes, [(None, 'uri', kwargs)])
+        self.assertEqual(mapper.routes, [(None, 'mod_uri', kwargs)])
 
     def test_key(self):
         limit = limits.Limit('db', uri='uri', value=10, unit=1)

@@ -392,23 +392,25 @@ class Limit(object):
             kwargs['requirements'] = self.requirements
 
         # Hook to allow subclasses to override arguments to connect()
-        self.route(kwargs)
+        uri = self.route(self.uri, kwargs)
 
         # Create the route
-        mapper.connect(None, self.uri, **kwargs)
+        mapper.connect(None, uri, **kwargs)
 
-    def route(self, route_args):
+    def route(self, uri, route_args):
         """
         Provides a hook by which additional arguments may be added to
         the route.  For most limits, this should not be needed; use
-        the filter() method instead.
+        the filter() method instead.  Should return the URI to
+        connect.
 
+        :param uri: The configured URI.  May be returned unchanged.
         :param route_args: A dictionary of keyword arguments that will
                            be passed to routes.Mapper.connect().  This
                            dictionary should be modified in place.
         """
 
-        pass
+        return uri
 
     def key(self, params):
         """
