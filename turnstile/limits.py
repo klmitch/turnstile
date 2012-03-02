@@ -248,6 +248,15 @@ class Limit(object):
             subtype=str,
             default=lambda: {},  # Make sure we don't use the *same* dict
             ),
+        use=dict(
+            desc=('A list of parameters derived from the URI which should be '
+                  'used to construct the bucket key.  By default, all '
+                  'parameters are used; this provides a way to restrict the '
+                  'set of used parameters.'),
+            type=list,
+            subtype=str,
+            default=lambda: [],  # Make sure we don't use the *same* list
+            ),
         continue_scan=dict(
             desc=('A boolean which signals whether to consider limits '
                   'following this one in the list.  If True (the '
@@ -425,11 +434,26 @@ class Limit(object):
         if the call should not be limited, or True to apply the limit.
         """
 
+        # If 'use' is set, use only the listed parameters; we'll add
+        # the others back later
+        if self.use:
+            unused = {}
+            for key, value in params.items():
+                if key not in self.use:
+                    unused[key] = value
+
+            # Do this in a separate step so we avoid changing a
+            # dictionary during traversal
+            for key in unused:
+                del params[key]
+        else:
+            unused = {}
+
         # First, we need to set up any additional params required to
         # get the bucket.  If the DeferLimit exception is thrown, no
         # further processing is performed.
         try:
-            additional = self.filter(environ, params) or {}
+            additional = self.filter(environ, params, unused) or {}
         except DeferLimit:
             return False
 
@@ -437,6 +461,7 @@ class Limit(object):
         key = self.key(params)
 
         # Update the parameters...
+        params.update(unused)
         params.update(additional)
 
         def process_bucket(bucket):
@@ -459,14 +484,18 @@ class Limit(object):
         # Should we continue the route scan?
         return not self.continue_scan
 
-    def filter(self, environ, params):
+    def filter(self, environ, params, unused):
         """
         Performs final route filtering.  Should add additional
         parameters to the `params` dict that should be used when
         looking up the bucket.  Parameters that should be added to
         params, but which should not be used to look up the bucket,
         may be returned as a dictionary.  If this limit should not be
-        applied to this request, raise DeferLimit.
+        applied to this request, raise DeferLimit.  Note that
+        parameters that have already been filtered out of `params`
+        will be present in the `unused` dictionary, and will be
+        automatically added back to `params` after generation of the
+        key.
 
         Note that the Turnstile configuration is available in the
         environment under the "turnstile.config" key.

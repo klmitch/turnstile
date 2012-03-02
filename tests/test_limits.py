@@ -171,9 +171,10 @@ class LimitTest2(limits.Limit):
     def route(self, route_args):
         route_args['route_add'] = 'LimitTest2'
 
-    def filter(self, environ, params):
+    def filter(self, environ, params, unused):
         if 'defer' in environ:
             raise limits.DeferLimit
+        environ['test.filter.unused'] = unused
         params['filter_add'] = 'LimitTest2_direct'
         return dict(additional='LimitTest2_additional')
 
@@ -224,7 +225,7 @@ class TestLimitMeta(tests.TestCase):
 
     def test_attrs(self):
         base_attrs = set(['uri', 'value', 'unit', 'verbs', 'requirements',
-                          'continue_scan'])
+                          'use', 'continue_scan'])
 
         self.assertEqual(set(limits.Limit.attrs.keys()), base_attrs)
         self.assertEqual(set(LimitTest1.attrs.keys()), base_attrs)
@@ -255,6 +256,7 @@ class TestLimit(tests.TestCase):
         self.assertEqual(limit._unit, 1)
         self.assertEqual(limit.verbs, [])
         self.assertEqual(limit.requirements, {})
+        self.assertEqual(limit.use, [])
         self.assertEqual(limit.continue_scan, True)
 
     def test_init_missing_value(self):
@@ -282,6 +284,13 @@ class TestLimit(tests.TestCase):
 
         self.assertEqual(limit.requirements, expected)
 
+    def test_init_use(self):
+        expected = ['spam', 'ni']
+        limit = limits.Limit('db', uri='uri', value=10, unit=1,
+                             use=expected)
+
+        self.assertEqual(limit.use, expected)
+
     def test_init_continue_scan(self):
         limit = limits.Limit('db', uri='uri', value=10, unit=1,
                              continue_scan=False)
@@ -295,6 +304,7 @@ class TestLimit(tests.TestCase):
             unit='second',
             verbs=['GET', 'PUT'],
             requirements=dict(foo=r'\..*', bar=r'.\.*'),
+            use=['baz'],
             continue_scan=False,
             )
         exemplar = dict(limit_class='turnstile.limits:Limit')
@@ -313,6 +323,7 @@ class TestLimit(tests.TestCase):
             unit='second',
             verbs=['GET', 'PUT'],
             requirements=dict(foo=r'\..*', bar=r'.\.*'),
+            use=['baz'],
             continue_scan=False,
             )
         expected = dict(limit_class='tests.test_limits:LimitTest1')
@@ -389,6 +400,24 @@ class TestLimit(tests.TestCase):
         self.assertEqual(db.update[3], (limit, key))
         self.assertEqual(id(bucket._params), id(params))
 
+    def test_filter_use(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param2'])
+        environ = {}
+        params = dict(param1='spam', param2='ni')
+        result = limit._filter(environ, params)
+
+        key = 'turnstile.limits:Limit/param2=ni'
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, {})
+        self.assertEqual(params, dict(param1='spam', param2='ni'))
+        self.assertEqual(db.update[0], key)
+        self.assertEqual(db.update[1], limits.Bucket)
+        self.assertEqual(db.update[3], (limit, key))
+        self.assertEqual(id(bucket._params), id(params))
+
     def test_filter_defer(self):
         bucket = FakeBucket(None)
         db = FakeDatabase(bucket)
@@ -415,9 +444,37 @@ class TestLimit(tests.TestCase):
                'filter_add=LimitTest2_direct/param=test')
 
         self.assertEqual(result, False)
-        self.assertEqual(environ, {})
+        self.assertEqual(environ, {
+                'test.filter.unused': {},
+                })
         self.assertEqual(params, dict(
                 param='test',
+                filter_add='LimitTest2_direct',
+                additional='LimitTest2_additional',
+                ))
+        self.assertEqual(db.update[0], key)
+        self.assertEqual(db.update[1], limits.Bucket)
+        self.assertEqual(db.update[3], (limit, key))
+        self.assertEqual(id(bucket._params), id(params))
+
+    def test_filter_hook_use(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = LimitTest2(db, uri='uri', value=10, unit=1, use=['param2'])
+        environ = {}
+        params = dict(param1='spam', param2='ni')
+        result = limit._filter(environ, params)
+
+        key = ('tests.test_limits:LimitTest2/'
+               'filter_add=LimitTest2_direct/param2=ni')
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, {
+                'test.filter.unused': dict(param1='spam'),
+                })
+        self.assertEqual(params, dict(
+                param1='spam',
+                param2='ni',
                 filter_add='LimitTest2_direct',
                 additional='LimitTest2_additional',
                 ))
