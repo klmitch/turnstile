@@ -1,2 +1,2 @@
 include LICENSE README.rst
-graft bin
+graft bin tests
