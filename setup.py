@@ -8,14 +8,14 @@ def read(fname):
 
 setup(
     name='turnstile',
-    version='0.2',
+    version='0.5',
     author='Kevin L. Mitchell',
     author_email='kevin.mitchell@rackspace.com',
     description="Distributed rate-limiting middleware",
     license='Apache License (2.0)',
     packages=['turnstile'],
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Environment :: Web Environment',
         'Framework :: Paste',
         'Intended Audience :: System Administrators',
@@ -44,6 +44,6 @@ setup(
         'routes',
         ],
     tests_require=[
-        'stubout',
+        'mox',
         ],
     )
