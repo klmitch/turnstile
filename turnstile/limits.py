@@ -248,6 +248,15 @@ class Limit(object):
             subtype=str,
             default=lambda: {},  # Make sure we don't use the *same* dict
             ),
+        queries=dict(
+            desc=('A list of query arguments that must be present in the '
+                  'request in order for this limit to apply.  Query argument '
+                  'values are not automatically added to the list of '
+                  'parameters used to construct the bucket key.'),
+            type=list,
+            subtype=str,
+            default=lambda: [],  # Make sure we don't use the *same* list
+            ),
         use=dict(
             desc=('A list of parameters derived from the URI which should be '
                   'used to construct the bucket key.  By default, all '
@@ -435,6 +444,22 @@ class Limit(object):
         limit applies.  Returns False if the limit does not apply or
         if the call should not be limited, or True to apply the limit.
         """
+
+        # Search for required query arguments
+        if self.queries:
+            # No query string available
+            if 'QUERY_STRING' not in environ:
+                return False
+
+            # Extract the list of provided query arguments from the
+            # QUERY_STRING
+            available = set(qstr.partition('=')[0] for qstr in
+                            environ['QUERY_STRING'].split('&'))
+
+            # Check if we have the required query arguments
+            required = set(self.queries)
+            if not required.issubset(available):
+                return False
 
         # If 'use' is set, use only the listed parameters; we'll add
         # the others back later

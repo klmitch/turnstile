@@ -226,7 +226,7 @@ class TestLimitMeta(tests.TestCase):
 
     def test_attrs(self):
         base_attrs = set(['uri', 'value', 'unit', 'verbs', 'requirements',
-                          'use', 'continue_scan'])
+                          'queries', 'use', 'continue_scan'])
 
         self.assertEqual(set(limits.Limit.attrs.keys()), base_attrs)
         self.assertEqual(set(LimitTest1.attrs.keys()), base_attrs)
@@ -324,6 +324,7 @@ class TestLimit(tests.TestCase):
             unit='second',
             verbs=['GET', 'PUT'],
             requirements=dict(foo=r'\..*', bar=r'.\.*'),
+            queries=['spam'],
             use=['baz'],
             continue_scan=False,
             )
@@ -395,6 +396,55 @@ class TestLimit(tests.TestCase):
 
         self.assertEqual(result, False)
         self.assertEqual(environ, {})
+        self.assertEqual(params, dict(param='test'))
+        self.assertEqual(db.update[0], key)
+        self.assertEqual(db.update[1], limits.Bucket)
+        self.assertEqual(db.update[3], (limit, key))
+        self.assertEqual(id(bucket._params), id(params))
+
+    def test_filter_queries_empty_env(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = limits.Limit(db, uri='uri', value=10, unit=1,
+                             queries=['query'])
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, {})
+        self.assertEqual(params, dict(param='test'))
+        self.assertEqual(db.update, None)
+        self.assertEqual(bucket._params, None)
+
+    def test_filter_queries_missing(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = limits.Limit(db, uri='uri', value=10, unit=1,
+                             queries=['query'])
+        environ = dict(QUERY_STRING='noquery=boofar')
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, dict(QUERY_STRING='noquery=boofar'))
+        self.assertEqual(params, dict(param='test'))
+        self.assertEqual(db.update, None)
+        self.assertEqual(bucket._params, None)
+
+    def test_filter_queries(self):
+        bucket = FakeBucket(None)
+        db = FakeDatabase(bucket)
+        limit = limits.Limit(db, uri='uri', value=10, unit=1,
+                             queries=['query'])
+        environ = dict(QUERY_STRING='query=spam')
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        key = 'turnstile.limits:Limit/param=test'
+
+        self.assertEqual(result, False)
+        self.assertEqual(environ, dict(QUERY_STRING='query=spam'))
         self.assertEqual(params, dict(param='test'))
         self.assertEqual(db.update[0], key)
         self.assertEqual(db.update[1], limits.Bucket)
