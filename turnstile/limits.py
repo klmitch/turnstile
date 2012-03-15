@@ -15,6 +15,7 @@
 
 import math
 import time
+import uuid
 
 import metatools
 
@@ -211,6 +212,13 @@ class Limit(object):
     __metaclass__ = LimitMeta
 
     attrs = dict(
+        uuid=dict(
+            desc=('A UUID uniquely identifying the limit.  If not provided, '
+                  'a new one will be generated when the limit is '
+                  'instantiated.'),
+            type=str,
+            default=lambda: uuid.uuid4(),
+            ),
         uri=dict(
             desc=('The URI the limit applies to.  This should be in a syntax '
                   'recognized by Routes, i.e., "/constant/{variable}".  Note '

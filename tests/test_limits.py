@@ -1,4 +1,5 @@
 import time
+import uuid
 
 from turnstile import limits
 
@@ -225,8 +226,8 @@ class TestLimitMeta(tests.TestCase):
                          'tests.test_limits:LimitTest2')
 
     def test_attrs(self):
-        base_attrs = set(['uri', 'value', 'unit', 'verbs', 'requirements',
-                          'queries', 'use', 'continue_scan'])
+        base_attrs = set(['uuid', 'uri', 'value', 'unit', 'verbs',
+                          'requirements', 'queries', 'use', 'continue_scan'])
 
         self.assertEqual(set(limits.Limit.attrs.keys()), base_attrs)
         self.assertEqual(set(LimitTest1.attrs.keys()), base_attrs)
@@ -249,9 +250,11 @@ class TestLimit(tests.TestCase):
         }
 
     def test_init_default(self):
+        self.stubs.Set(uuid, 'uuid4', lambda: 'fake_uuid')
         limit = limits.Limit('db', uri='uri', value=10, unit='second')
 
         self.assertEqual(limit.db, 'db')
+        self.assertEqual(limit.uuid, 'fake_uuid')
         self.assertEqual(limit.uri, 'uri')
         self.assertEqual(limit._value, 10)
         self.assertEqual(limit._unit, 1)
@@ -259,6 +262,12 @@ class TestLimit(tests.TestCase):
         self.assertEqual(limit.requirements, {})
         self.assertEqual(limit.use, [])
         self.assertEqual(limit.continue_scan, True)
+
+    def test_init_uuid(self):
+        limit1 = limits.Limit('db', uri='uri', value=10, unit='second')
+        limit2 = limits.Limit('db', uri='uri', value=10, unit='second')
+
+        self.assertNotEqual(limit1.uuid, limit2.uuid)
 
     def test_init_missing_value(self):
         with self.assertRaises(TypeError):
@@ -319,6 +328,7 @@ class TestLimit(tests.TestCase):
 
     def test_dehydrate(self):
         exemplar = dict(
+            uuid='fake_uuid',
             uri='uri',
             value=10,
             unit='second',
