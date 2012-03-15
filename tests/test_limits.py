@@ -257,7 +257,7 @@ class TestLimit(tests.TestCase):
         self.assertEqual(limit._unit, 1)
         self.assertEqual(limit.verbs, [])
         self.assertEqual(limit.requirements, {})
-        self.assertEqual(limit.use, None)
+        self.assertEqual(limit.use, [])
         self.assertEqual(limit.continue_scan, True)
 
     def test_init_missing_value(self):
@@ -387,7 +387,7 @@ class TestLimit(tests.TestCase):
     def test_filter_basic(self):
         bucket = FakeBucket(None)
         db = FakeDatabase(bucket)
-        limit = limits.Limit(db, uri='uri', value=10, unit=1)
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
         environ = {}
         params = dict(param='test')
         result = limit._filter(environ, params)
@@ -435,7 +435,7 @@ class TestLimit(tests.TestCase):
     def test_filter_queries(self):
         bucket = FakeBucket(None)
         db = FakeDatabase(bucket)
-        limit = limits.Limit(db, uri='uri', value=10, unit=1,
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'],
                              queries=['query'])
         environ = dict(QUERY_STRING='query=spam')
         params = dict(param='test')
@@ -472,7 +472,7 @@ class TestLimit(tests.TestCase):
     def test_filter_use_empty(self):
         bucket = FakeBucket(None)
         db = FakeDatabase(bucket)
-        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=[])
+        limit = limits.Limit(db, uri='uri', value=10, unit=1)
         environ = {}
         params = dict(param1='spam', param2='ni')
         result = limit._filter(environ, params)
@@ -490,7 +490,7 @@ class TestLimit(tests.TestCase):
     def test_filter_defer(self):
         bucket = FakeBucket(None)
         db = FakeDatabase(bucket)
-        limit = LimitTest2(db, uri='uri', value=10, unit=1)
+        limit = LimitTest2(db, uri='uri', value=10, unit=1, use=['param'])
         environ = dict(defer=True)
         params = dict(param='test')
         result = limit._filter(environ, params)
@@ -504,7 +504,7 @@ class TestLimit(tests.TestCase):
     def test_filter_hook(self):
         bucket = FakeBucket(None)
         db = FakeDatabase(bucket)
-        limit = LimitTest2(db, uri='uri', value=10, unit=1)
+        limit = LimitTest2(db, uri='uri', value=10, unit=1, use=['param'])
         environ = {}
         params = dict(param='test')
         result = limit._filter(environ, params)
@@ -555,7 +555,7 @@ class TestLimit(tests.TestCase):
     def test_filter_hook_use_empty(self):
         bucket = FakeBucket(None)
         db = FakeDatabase(bucket)
-        limit = LimitTest2(db, uri='uri', value=10, unit=1, use=[])
+        limit = LimitTest2(db, uri='uri', value=10, unit=1)
         environ = {}
         params = dict(param1='spam', param2='ni')
         result = limit._filter(environ, params)
@@ -581,7 +581,7 @@ class TestLimit(tests.TestCase):
     def test_filter_delay(self):
         bucket = FakeBucket(10)
         db = FakeDatabase(bucket)
-        limit = limits.Limit(db, uri='uri', value=10, unit=1)
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
         environ = {}
         params = dict(param='test')
         result = limit._filter(environ, params)
@@ -601,7 +601,7 @@ class TestLimit(tests.TestCase):
     def test_filter_continue_defer(self):
         bucket = FakeBucket(None)
         db = FakeDatabase(bucket)
-        limit = LimitTest2(db, uri='uri', value=10, unit=1,
+        limit = LimitTest2(db, uri='uri', value=10, unit=1, use=['param'],
                            continue_scan=False)
         environ = dict(defer=True)
         params = dict(param='test')
@@ -616,7 +616,7 @@ class TestLimit(tests.TestCase):
     def test_filter_continue_delay(self):
         bucket = FakeBucket(10)
         db = FakeDatabase(bucket)
-        limit = limits.Limit(db, uri='uri', value=10, unit=1,
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'],
                              continue_scan=False)
         environ = {}
         params = dict(param='test')
@@ -637,7 +637,7 @@ class TestLimit(tests.TestCase):
     def test_filter_continue_no_delay(self):
         bucket = FakeBucket(None)
         db = FakeDatabase(bucket)
-        limit = limits.Limit(db, uri='uri', value=10, unit=1,
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'],
                              continue_scan=False)
         environ = {}
         params = dict(param='test')

@@ -259,12 +259,12 @@ class Limit(object):
             ),
         use=dict(
             desc=('A list of parameters derived from the URI which should be '
-                  'used to construct the bucket key.  By default, all '
-                  'parameters are used; this provides a way to restrict the '
-                  'set of used parameters.'),
+                  'used to construct the bucket key.  By default, no '
+                  'parameters are used; this provides a way to list the '
+                  'set of parameters to use.'),
             type=list,
             subtype=str,
-            default=None,
+            default=lambda: [],  # Make sure we don't use the *same* list
             ),
         continue_scan=dict(
             desc=('A boolean which signals whether to consider limits '
@@ -461,18 +461,17 @@ class Limit(object):
             if not required.issubset(available):
                 return False
 
-        # If 'use' is set, use only the listed parameters; we'll add
-        # the others back later
+        # Use only the parameters listed in use; we'll add the others
+        # back later
         unused = {}
-        if self.use is not None:
-            for key, value in params.items():
-                if key not in self.use:
-                    unused[key] = value
+        for key, value in params.items():
+            if key not in self.use:
+                unused[key] = value
 
-            # Do this in a separate step so we avoid changing a
-            # dictionary during traversal
-            for key in unused:
-                del params[key]
+        # Do this in a separate step so we avoid changing a
+        # dictionary during traversal
+        for key in unused:
+            del params[key]
 
         # First, we need to set up any additional params required to
         # get the bucket.  If the DeferLimit exception is thrown, no
