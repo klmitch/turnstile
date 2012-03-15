@@ -167,7 +167,6 @@ class LimitTest2(limits.Limit):
             desc='Test attribute.',
             type=(str,),
             default=''))
-    skip = set(['test_skip'])
 
     def route(self, uri, route_args):
         route_args['route_add'] = 'LimitTest2'
@@ -233,13 +232,6 @@ class TestLimitMeta(tests.TestCase):
         self.assertEqual(set(LimitTest1.attrs.keys()), base_attrs)
         self.assertEqual(set(LimitTest2.attrs.keys()),
                          base_attrs | set(['test_attr']))
-
-    def test_skip(self):
-        base_skip = set(['limit'])
-
-        self.assertEqual(limits.Limit.skip, base_skip)
-        self.assertEqual(LimitTest1.skip, base_skip)
-        self.assertEqual(LimitTest2.skip, base_skip | set(['test_skip']))
 
 
 class TestLimit(tests.TestCase):

@@ -185,12 +185,10 @@ class LimitMeta(metatools.MetaClass):
         # Add it to the namespace
         namespace['_limit_full_name'] = full_name
 
-        # Set up attrs and skip
+        # Set up attrs
         namespace.setdefault('attrs', {})
-        namespace.setdefault('skip', set())
         for base in mcs.iter_bases(bases):
             mcs.inherit_dict(base, namespace, 'attrs')
-            mcs.inherit_set(base, namespace, 'skip')
 
         # Create the class
         cls = super(LimitMeta, mcs).__new__(mcs, name, bases, namespace)
@@ -284,8 +282,6 @@ class Limit(object):
             default=True,
             ),
         )
-
-    skip = set(['limit'])
 
     bucket_class = Bucket
 
@@ -442,8 +438,7 @@ class Limit(object):
         # Build up the key in pieces
         parts = [self._limit_full_name]
         parts.extend('%s=%s' % (k, params[k])
-                     for k in sorted(params)
-                     if k not in self.skip)
+                     for k in sorted(params))
         return '/'.join(parts)
 
     def _filter(self, environ, params):
