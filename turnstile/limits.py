@@ -13,13 +13,37 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import json
 import math
+import re
 import time
 import uuid
 
 import metatools
 
 from turnstile import utils
+
+
+# %-encode '/' and '%'
+_ENC_RE = re.compile('[/%]')
+
+
+def _encode(value):
+    """Encode the given value, taking care of '%' and '/'."""
+
+    value = json.dumps(value)
+    return _ENC_RE.sub(lambda x: '%%%2x' % ord(x.group(0)), value)
+
+
+# %-decode a string
+_DEC_RE = re.compile('%([a-fA-F0-9]{2})')
+
+
+def _decode(value):
+    """Decode the given value, reverting '%'-encoded groups."""
+
+    value = _DEC_RE.sub(lambda x: '%c' % int(x.group(1), 16), value)
+    return json.loads(value)
 
 
 # Recognized units and their names and aliases
@@ -215,7 +239,7 @@ class Limit(object):
                   'a new one will be generated when the limit is '
                   'instantiated.'),
             type=str,
-            default=lambda: uuid.uuid4(),
+            default=lambda: str(uuid.uuid4()),
             ),
         uri=dict(
             desc=('The URI the limit applies to.  This should be in a syntax '
@@ -425,6 +449,41 @@ class Limit(object):
 
         return uri
 
+    def decode(self, key):
+        """
+        Given a bucket key, compute the parameters used to compute
+        that key.
+
+        :param key: The bucket key.  Note that the UUID must match the
+                    UUID of this limit; a ValueError will be raised if
+                    this is not the case.
+        """
+
+        # This really is a bucket, right?
+        if not key.startswith('bucket:'):
+            raise ValueError("%r is not a bucket key" % key)
+
+        # Take the bucket apart...
+        parts = key[7:].split('/')
+
+        # Make sure the uuids match
+        if parts[0] != self.uuid:
+            raise ValueError("%r is not a bucket corresponding to this limit" %
+                             key)
+
+        # Decode the key
+        params = {}
+        for part in parts[1:]:
+            name, sep, value = part.partition('=')
+
+            # Make sure it's well-formed
+            if sep != '=':
+                raise ValueError("Cannot interpret key part %r" % part)
+
+            params[name] = _decode(value)
+
+        return params
+
     def key(self, params):
         """
         Given a set of parameters describing the request, compute a
@@ -436,8 +495,8 @@ class Limit(object):
         """
 
         # Build up the key in pieces
-        parts = [self._limit_full_name]
-        parts.extend('%s=%s' % (k, params[k])
+        parts = ['bucket:%s' % self.uuid]
+        parts.extend('%s=%s' % (k, _encode(params[k]))
                      for k in sorted(params))
         return '/'.join(parts)
 

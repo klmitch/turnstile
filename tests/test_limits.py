@@ -6,6 +6,26 @@ from turnstile import limits
 import tests
 
 
+class TestEncodeDecode(tests.TestCase):
+    def test_encode(self):
+        self.assertEqual(limits._encode('this is a test'),
+                         '"this is a test"')
+        self.assertEqual(limits._encode(123), '123')
+        self.assertEqual(limits._encode("don't / your %s."),
+                         '"don\'t %2f your %25s."')
+        self.assertEqual(limits._encode('you said "hello".'),
+                         '"you said \\"hello\\"."')
+
+    def test_decode(self):
+        self.assertEqual(limits._decode('"this is a test"'),
+                         'this is a test')
+        self.assertEqual(limits._decode('123'), 123)
+        self.assertEqual(limits._decode('"don\'t %2f your %25s."'),
+                         "don't / your %s.")
+        self.assertEqual(limits._decode('"you said \\"hello\\"."'),
+                         'you said "hello".')
+
+
 class TestUnits(tests.TestCase):
     def test_unit_value(self):
         for unit in ('second', 'seconds', 'secs', 'sec', 's'):
@@ -384,7 +404,38 @@ class TestLimit(tests.TestCase):
         params = dict(a=1, b=2, c=3, d=4, e=5, f=6)
         key = limit.key(params)
 
-        self.assertEqual(key, 'turnstile.limits:Limit/a=1/b=2/c=3/d=4/e=5/f=6')
+        self.assertEqual(key, 'bucket:%s/a=1/b=2/c=3/d=4/e=5/f=6' % limit.uuid)
+
+    def test_decode(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        key = 'bucket:%s/a=1/b=2/c=3/d=4/e=5/f=6' % limit.uuid
+        params = limit.decode(key)
+
+        self.assertEqual(params, dict(a=1, b=2, c=3, d=4, e=5, f=6))
+
+    def test_decode_badkey(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        key = 'badbucket:%s/a=1/b=2/c=3/d=4/e=5/f=6' % limit.uuid
+
+        self.assertRaises(ValueError, limit.decode, key)
+
+    def test_decode_baduuid(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        key = 'bucket:bad_uuid/a=1/b=2/c=3/d=4/e=5/f=6'
+
+        self.assertRaises(ValueError, limit.decode, key)
+
+    def test_decode_badpart(self):
+        limit=limits.Limit('db', uri='uri', value=10, unit=1)
+        key = 'bucket:%s/a1/b=2/c=3/d=4/e=5/f=6' % limit.uuid
+
+        self.assertRaises(ValueError, limit.decode, key)
+
+    def test_decode_badvalue(self):
+        limit=limits.Limit('db', uri='uri', value=10, unit=1)
+        key = 'bucket:%s/a=spam/b=2/c=3/d=4/e=5/f=6' % limit.uuid
+
+        self.assertRaises(ValueError, limit.decode, key)
 
     def test_filter_basic(self):
         bucket = FakeBucket(None)
@@ -394,7 +445,7 @@ class TestLimit(tests.TestCase):
         params = dict(param='test')
         result = limit._filter(environ, params)
 
-        key = 'turnstile.limits:Limit/param=test'
+        key = 'bucket:%s/param="test"' % limit.uuid
 
         self.assertEqual(result, False)
         self.assertEqual(environ, {})
@@ -443,7 +494,7 @@ class TestLimit(tests.TestCase):
         params = dict(param='test')
         result = limit._filter(environ, params)
 
-        key = 'turnstile.limits:Limit/param=test'
+        key = 'bucket:%s/param="test"' % limit.uuid
 
         self.assertEqual(result, False)
         self.assertEqual(environ, dict(QUERY_STRING='query=spam'))
@@ -461,7 +512,7 @@ class TestLimit(tests.TestCase):
         params = dict(param1='spam', param2='ni')
         result = limit._filter(environ, params)
 
-        key = 'turnstile.limits:Limit/param2=ni'
+        key = 'bucket:%s/param2="ni"' % limit.uuid
 
         self.assertEqual(result, False)
         self.assertEqual(environ, {})
@@ -479,7 +530,7 @@ class TestLimit(tests.TestCase):
         params = dict(param1='spam', param2='ni')
         result = limit._filter(environ, params)
 
-        key = 'turnstile.limits:Limit'
+        key = 'bucket:%s' % limit.uuid
 
         self.assertEqual(result, False)
         self.assertEqual(environ, {})
@@ -511,8 +562,8 @@ class TestLimit(tests.TestCase):
         params = dict(param='test')
         result = limit._filter(environ, params)
 
-        key = ('tests.test_limits:LimitTest2/'
-               'filter_add=LimitTest2_direct/param=test')
+        key = ('bucket:%s/filter_add="LimitTest2_direct"/param="test"' %
+               limit.uuid)
 
         self.assertEqual(result, False)
         self.assertEqual(environ, {
@@ -536,8 +587,8 @@ class TestLimit(tests.TestCase):
         params = dict(param1='spam', param2='ni')
         result = limit._filter(environ, params)
 
-        key = ('tests.test_limits:LimitTest2/'
-               'filter_add=LimitTest2_direct/param2=ni')
+        key = ('bucket:%s/filter_add="LimitTest2_direct"/param2="ni"' %
+               limit.uuid)
 
         self.assertEqual(result, False)
         self.assertEqual(environ, {
@@ -562,8 +613,7 @@ class TestLimit(tests.TestCase):
         params = dict(param1='spam', param2='ni')
         result = limit._filter(environ, params)
 
-        key = ('tests.test_limits:LimitTest2/'
-               'filter_add=LimitTest2_direct')
+        key = 'bucket:%s/filter_add="LimitTest2_direct"' % limit.uuid
 
         self.assertEqual(result, False)
         self.assertEqual(environ, {
@@ -588,7 +638,7 @@ class TestLimit(tests.TestCase):
         params = dict(param='test')
         result = limit._filter(environ, params)
 
-        key = 'turnstile.limits:Limit/param=test'
+        key = 'bucket:%s/param="test"' % limit.uuid
 
         self.assertEqual(result, False)
         self.assertEqual(environ, {
@@ -624,7 +674,7 @@ class TestLimit(tests.TestCase):
         params = dict(param='test')
         result = limit._filter(environ, params)
 
-        key = 'turnstile.limits:Limit/param=test'
+        key = 'bucket:%s/param="test"' % limit.uuid
 
         self.assertEqual(result, True)
         self.assertEqual(environ, {
@@ -645,7 +695,7 @@ class TestLimit(tests.TestCase):
         params = dict(param='test')
         result = limit._filter(environ, params)
 
-        key = 'turnstile.limits:Limit/param=test'
+        key = 'bucket:%s/param="test"' % limit.uuid
 
         self.assertEqual(result, True)
         self.assertEqual(environ, {})
