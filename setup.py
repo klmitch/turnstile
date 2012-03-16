@@ -8,7 +8,7 @@ def read(fname):
 
 setup(
     name='turnstile',
-    version='0.5.1',
+    version='0.5.2a',
     author='Kevin L. Mitchell',
     author_email='kevin.mitchell@rackspace.com',
     description="Distributed rate-limiting middleware",
