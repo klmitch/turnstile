@@ -9,6 +9,26 @@ application.  Turnstile uses a Redis database to track the rate at
 which users are hitting the API, and can then apply configured rate
 limits, even if each request was made against a different API node.
 
+Installing Turnstile
+====================
+
+Turnstile can be easily installed like many Python packages, using
+`PIP`_:: 
+
+ pip install turnstile
+
+You can install the dependencies required by Turnstile by
+issuing the following command::
+
+ pip install -r .requires
+
+From within your Turnstile source directory.
+
+If you would like to run the tests, you can install the additional
+test dependencies in the same way::
+
+ pip install -r .test-requires
+
 Adding and Configuring Turnstile
 ================================
 
@@ -391,3 +411,5 @@ All values in the configuration are stored as strings.  Configuration
 values do not need to be pre-declared in any way; Turnstile ignores
 (but maintains) configuration values that it does not use, making
 these values available for use by preprocessors and Limit classes.
+
+.. _PIP link: http://www.pip-installer.org/en/latest/index.html
