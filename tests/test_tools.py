@@ -17,6 +17,10 @@ from tests.test_database import FakeDatabase
 
 class FakeLimit(tests.GenericFakeClass):
     attrs = dict(
+        bool_attr=dict(
+            type=bool,
+            default=False,
+            ),
         int_attr=dict(
             type=int,
             default=1,
@@ -186,6 +190,65 @@ class TestParseLimitNode(tests.TestCase):
         self.assertIsInstance(limit, FakeLimit)
         self.assertEqual(limit.args, ('db',))
         self.assertEqual(limit.kwargs, dict(required='spam'))
+
+    def test_parse_bool_attr_true(self):
+        limit_xml = """<limit class="FakeLimit">
+    <attr name="bool_attr">True</attr>
+    <attr name="required">spam</attr>
+</limit>"""
+        limit_node = etree.fromstring(limit_xml)
+
+        with warnings.catch_warnings(record=True) as w:
+            limit = tools.parse_limit_node('db', 1, limit_node)
+
+            self.assertEqual(len(w), 0)
+
+        self.assertIsInstance(limit, FakeLimit)
+        self.assertEqual(limit.args, ('db',))
+        self.assertEqual(limit.kwargs, dict(
+                required='spam',
+                bool_attr=True,
+                ))
+
+    def test_parse_bool_attr_false(self):
+        limit_xml = """<limit class="FakeLimit">
+    <attr name="bool_attr">False</attr>
+    <attr name="required">spam</attr>
+</limit>"""
+        limit_node = etree.fromstring(limit_xml)
+
+        with warnings.catch_warnings(record=True) as w:
+            limit = tools.parse_limit_node('db', 1, limit_node)
+
+            self.assertEqual(len(w), 0)
+
+        self.assertIsInstance(limit, FakeLimit)
+        self.assertEqual(limit.args, ('db',))
+        self.assertEqual(limit.kwargs, dict(
+                required='spam',
+                bool_attr=False,
+                ))
+
+    def test_parse_bool_attr_unknown(self):
+        limit_xml = """<limit class="FakeLimit">
+    <attr name="bool_attr">unknown</attr>
+    <attr name="required">spam</attr>
+</limit>"""
+        limit_node = etree.fromstring(limit_xml)
+
+        with warnings.catch_warnings(record=True) as w:
+            limit = tools.parse_limit_node('db', 1, limit_node)
+
+            self.assertEqual(len(w), 1)
+            self.assertIn("Unrecognized boolean value 'unknown' while parsing "
+                          "'bool_attr' attribute of limit at index 1; "
+                          "ignoring...", w[-1].message)
+
+        self.assertIsInstance(limit, FakeLimit)
+        self.assertEqual(limit.args, ('db',))
+        self.assertEqual(limit.kwargs, dict(
+                required='spam',
+                ))
 
     def test_parse_int_attr(self):
         limit_xml = """<limit class="FakeLimit">
@@ -370,6 +433,7 @@ class TestMakeLimitNode(tests.TestCase):
 
         self.root = etree.Element('root')
         self.limit_kwargs = dict(
+            bool_attr=False,
             int_attr=1,
             float_attr=1.5,
             str_attr='spam',
