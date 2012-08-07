@@ -1,3 +1,4 @@
+from turnstile import control
 from turnstile import database
 from turnstile import middleware
 
@@ -200,7 +201,7 @@ class TestTurnstileMiddleware(tests.TestCase):
     def setUp(self):
         super(TestTurnstileMiddleware, self).setUp()
         self.stubs.Set(database, 'initialize', lambda cfg: cfg)
-        self.stubs.Set(database, 'ControlDaemon', tests.GenericFakeClass)
+        self.stubs.Set(control, 'ControlDaemon', tests.GenericFakeClass)
 
     def test_init_basic(self):
         mid = middleware.TurnstileMiddleware('app', {})

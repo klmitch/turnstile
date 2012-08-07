@@ -16,6 +16,7 @@
 import collections
 import math
 
+from turnstile import control
 from turnstile import database
 from turnstile import utils
 
@@ -187,8 +188,8 @@ class TurnstileMiddleware(object):
 
         # And start up the control daemon
         control_args = self.config.get('control', {})
-        self.control_daemon = database.ControlDaemon(self.db, self,
-                                                     control_args)
+        self.control_daemon = control.ControlDaemon(self.db, self,
+                                                    control_args)
 
     def __call__(self, environ, start_response):
         """

@@ -12,7 +12,7 @@ from turnstile import limits
 from turnstile import tools
 
 import tests
-from tests.test_database import FakeDatabase
+from tests.db_fixture import FakeDatabase
 
 
 class FakeLimit(tests.GenericFakeClass):
