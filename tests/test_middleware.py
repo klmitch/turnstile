@@ -1,8 +1,11 @@
+import routes
+
 from turnstile import control
 from turnstile import database
 from turnstile import middleware
 
 import tests
+from tests import db_fixture
 
 
 def preproc1(mid, environ):
@@ -24,7 +27,7 @@ class FakeMiddleware(tests.GenericFakeClass):
     pass
 
 
-class FakeMapper(object):
+class FakeCallMapper(object):
     def __init__(self, delay=None):
         self.delay = delay
         self.environ = None
@@ -50,6 +53,18 @@ class FakeLimit(object):
         if self.headers:
             headers.update(self.headers)
         return status, "Fake Entity for limit %s" % self.ident
+
+
+class FakeRecheckMapper(tests.GenericFakeClass):
+    def __init__(self, *args, **kwargs):
+        super(FakeRecheckMapper, self).__init__(*args, **kwargs)
+
+        self.routes = []
+
+
+class FakeFailingRecheckMapper(FakeRecheckMapper):
+    def __init__(self, *args, **kwargs):
+        raise Exception("Fake-out")
 
 
 class Response(object):
@@ -203,10 +218,19 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.stubs.Set(database, 'initialize', lambda cfg: cfg)
         self.stubs.Set(control, 'ControlDaemon', tests.GenericFakeClass)
 
+    def stub_recheck_limits(self):
+        self.stubs.Set(middleware.TurnstileMiddleware, 'recheck_limits',
+                       lambda *args: None)
+
+    def stub_mapper(self, mapper=FakeRecheckMapper):
+        self.stubs.Set(routes, 'Mapper', mapper)
+
     def test_init_basic(self):
         mid = middleware.TurnstileMiddleware('app', {})
 
         self.assertEqual(mid.app, 'app')
+        self.assertEqual(mid.limits, [])
+        self.assertEqual(mid.limit_sum, None)
         self.assertEqual(mid.mapper, None)
         self.assertEqual(mid.config, {
                 None: dict(status='413 Request Entity Too Large'),
@@ -257,6 +281,8 @@ class TestTurnstileMiddleware(tests.TestCase):
                                             node_name='node1')))
 
     def test_call_through(self):
+        self.stub_recheck_limits()
+
         response = Response()
         environ = dict(test=True)
 
@@ -267,7 +293,7 @@ class TestTurnstileMiddleware(tests.TestCase):
             return 'app called'
 
         mid = middleware.TurnstileMiddleware(app, {})
-        mid.mapper = FakeMapper()
+        mid.mapper = FakeCallMapper()
         result = mid(environ, response.start)
 
         self.assertEqual(id(mid.mapper.environ), id(environ))
@@ -277,6 +303,8 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(response.headers, None)
 
     def test_call_preprocess(self):
+        self.stub_recheck_limits()
+
         response = Response()
         environ = dict(test=True)
 
@@ -289,7 +317,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         mid = middleware.TurnstileMiddleware(app, dict(
                 preprocess='preproc1 preproc2 preproc3',
                 ))
-        mid.mapper = FakeMapper()
+        mid.mapper = FakeCallMapper()
         result = mid(environ, response.start)
 
         self.assertEqual(id(mid.mapper.environ), id(environ))
@@ -300,6 +328,8 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(response.headers, None)
 
     def test_call_limited(self):
+        self.stub_recheck_limits()
+
         response = Response()
         environ = dict(test=True)
         delays = [
@@ -312,7 +342,7 @@ class TestTurnstileMiddleware(tests.TestCase):
             self.assertTrue(False)
 
         mid = middleware.TurnstileMiddleware(app, {})
-        mid.mapper = FakeMapper(delays)
+        mid.mapper = FakeCallMapper(delays)
         result = mid(environ, response.start)
 
         self.assertEqual(id(mid.mapper.environ), id(environ))
@@ -331,6 +361,8 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(delays[2][1].bucket, None)
 
     def test_call_limited_alternate_status(self):
+        self.stub_recheck_limits()
+
         response = Response()
         environ = dict(test=True)
         delays = [(3.4, FakeLimit('limit1'), 'bucket1')]
@@ -339,7 +371,7 @@ class TestTurnstileMiddleware(tests.TestCase):
             self.assertTrue(False)
 
         mid = middleware.TurnstileMiddleware(app, dict(status='404 Not Found'))
-        mid.mapper = FakeMapper(delays)
+        mid.mapper = FakeCallMapper(delays)
         result = mid(environ, response.start)
 
         self.assertEqual(id(mid.mapper.environ), id(environ))
@@ -354,6 +386,8 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(delays[0][1].bucket, 'bucket1')
 
     def test_call_limited_extra_headers(self):
+        self.stub_recheck_limits()
+
         response = Response()
         environ = dict(test=True)
         delays = [(3.4, FakeLimit('limit1', dict(test='foo')), 'bucket1')]
@@ -362,7 +396,7 @@ class TestTurnstileMiddleware(tests.TestCase):
             self.assertTrue(False)
 
         mid = middleware.TurnstileMiddleware(app, {})
-        mid.mapper = FakeMapper(delays)
+        mid.mapper = FakeCallMapper(delays)
         result = mid(environ, response.start)
 
         self.assertEqual(id(mid.mapper.environ), id(environ))
@@ -376,3 +410,126 @@ class TestTurnstileMiddleware(tests.TestCase):
 
         self.assertEqual(id(delays[0][1].environ), id(environ))
         self.assertEqual(delays[0][1].bucket, 'bucket1')
+
+    def test_recheck_limits_empty(self):
+        self.stub_mapper()
+
+        db = db_fixture.FakeDatabase()
+        ld = db_fixture.FakeLimitData()
+        mid = middleware.TurnstileMiddleware('app', {})
+        mid.db = db
+        mid.control_daemon._limits = ld
+        mid.limits = None  # Check that these get updated
+        mid.mapper = None
+        mid.recheck_limits()
+
+        self.assertEqual(mid.limits, [])
+        self.assertEqual(mid.limit_sum, 0)
+        self.assertIsInstance(mid.mapper, FakeRecheckMapper)
+        self.assertEqual(mid.mapper.kwargs, dict(register=False))
+        self.assertEqual(mid.mapper.routes, [])
+
+    def test_recheck_limits_entries(self):
+        self.stub_mapper()
+
+        db = db_fixture.FakeDatabase()
+        ld = db_fixture.FakeLimitData([dict(limit='limit1'),
+                                       dict(limit='limit2')])
+        mid = middleware.TurnstileMiddleware('app', {})
+        mid.db = db
+        mid.control_daemon._limits = ld
+        mid.limits = None  # Check that these get updated
+        mid.mapper = None
+        mid.recheck_limits()
+
+        self.assertEqual(len(mid.limits), 2)
+        for idx, lim in enumerate(mid.limits):
+            self.assertIsInstance(lim, db_fixture.FakeLimit)
+            self.assertEqual(lim.args, (db,))
+            self.assertEqual(lim.kwargs, dict(limit='limit%d' % (idx + 1)))
+        self.assertEqual(mid.limit_sum, 2)
+        self.assertIsInstance(mid.mapper, FakeRecheckMapper)
+        self.assertEqual(mid.mapper.kwargs, dict(register=False))
+        self.assertEqual(len(mid.mapper.routes), 2)
+        for idx, route in enumerate(mid.mapper.routes):
+            self.assertIsInstance(route, db_fixture.FakeLimit)
+            self.assertEqual(route.args, (db,))
+            self.assertEqual(route.kwargs, dict(limit='limit%d' % (idx + 1)))
+
+    def test_recheck_limits_nochange(self):
+        self.stub_mapper()
+
+        db = db_fixture.FakeDatabase()
+        ld = db_fixture.FakeLimitData([dict(limit='limit1'),
+                                       dict(limit='limit2')])
+        mid = middleware.TurnstileMiddleware('app', {})
+        mid.db = db
+        mid.control_daemon._limits = ld
+        mid.limits = None  # Check that these don't get updated
+        mid.mapper = None
+        mid.limit_sum = ld.limit_sum
+        mid.recheck_limits()
+
+        self.assertEqual(mid.limits, None)
+        self.assertEqual(mid.limit_sum, 2)
+        self.assertEqual(mid.mapper, None)
+        self.assertEqual(len(self.log_messages), 0)
+
+    def test_recheck_limits_failure(self):
+        self.stub_mapper(FakeFailingRecheckMapper)
+
+        db = db_fixture.FakeDatabase()
+        db._fakedb['errors'] = set()
+        ld = db_fixture.FakeLimitData()
+        mid = middleware.TurnstileMiddleware('app', {})
+        mid.db = db
+        mid.control_daemon._limits = ld
+        mid.limits = None  # Check that these don't get updated
+        mid.mapper = None
+        mid.recheck_limits()
+
+        self.assertEqual(mid.limits, None)
+        self.assertEqual(mid.limit_sum, None)
+        self.assertEqual(mid.mapper, None)
+        self.assertEqual(len(self.log_messages), 1)
+        self.assertTrue(self.log_messages[0].startswith(
+                'Could not load limits'))
+        self.assertEqual(db._actions[0][0], 'sadd')
+        self.assertEqual(db._actions[0][1], 'errors')
+        self.assertTrue(db._actions[0][2].startswith(
+                'Failed to load limits: '))
+        self.assertEqual(db._actions[1][0], 'publish')
+        self.assertEqual(db._actions[1][1], 'errors')
+        self.assertTrue(db._actions[1][2].startswith(
+                'Failed to load limits: '))
+
+    def test_recheck_limits_failure_alternate(self):
+        self.stub_mapper(FakeFailingRecheckMapper)
+
+        db = db_fixture.FakeDatabase()
+        db._fakedb['errors_set'] = set()
+        ld = db_fixture.FakeLimitData()
+        mid = middleware.TurnstileMiddleware('app', {
+                'control.errors_key': 'errors_set',
+                'control.errors_channel': 'errors_channel',
+                })
+        mid.db = db
+        mid.control_daemon._limits = ld
+        mid.limits = None  # Check that these don't get updated
+        mid.mapper = None
+        mid.recheck_limits()
+
+        self.assertEqual(mid.limits, None)
+        self.assertEqual(mid.limit_sum, None)
+        self.assertEqual(mid.mapper, None)
+        self.assertEqual(len(self.log_messages), 1)
+        self.assertTrue(self.log_messages[0].startswith(
+                'Could not load limits'))
+        self.assertEqual(db._actions[0][0], 'sadd')
+        self.assertEqual(db._actions[0][1], 'errors_set')
+        self.assertTrue(db._actions[0][2].startswith(
+                'Failed to load limits: '))
+        self.assertEqual(db._actions[1][0], 'publish')
+        self.assertEqual(db._actions[1][1], 'errors_channel')
+        self.assertTrue(db._actions[1][2].startswith(
+                'Failed to load limits: '))

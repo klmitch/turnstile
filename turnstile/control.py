@@ -13,19 +13,92 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import hashlib
 import logging
 import random
 import traceback
 
 import eventlet
 import msgpack
-import routes
 
 from turnstile import limits
 from turnstile import utils
 
 
 LOG = logging.getLogger('turnstile')
+
+
+class NoChangeException(Exception):
+    """
+    Indicates that there are no limit data changes to be applied.
+    Raised by LimitData.get_limits().
+    """
+
+    pass
+
+
+class LimitData(object):
+    """
+    Stores limit data.  Provides a common depot between the
+    ControlDaemon and the middleware which contains the raw limit data
+    (as msgpack'd strings).
+    """
+
+    def __init__(self):
+        """
+        Initialize the LimitData.  The limit data is initialized to
+        the empty list.
+        """
+
+        # Build up a sum for the empty list
+        chksum = hashlib.md5()
+        chksum.update('')
+
+        self.limit_data = []
+        self.limit_sum = chksum.hexdigest()
+        self.limit_lock = eventlet.semaphore.Semaphore()
+
+    def set_limits(self, limits):
+        """
+        Set the limit data to the given list of limits.  Limits are
+        specified as the raw msgpack string representing the limit.
+        Computes the checksum of the limits; if the checksum is
+        identical to the current one, no action is taken.
+        """
+
+        # First task, build the checksum of the new limits
+        chksum = hashlib.md5()  # sufficient for our purposes
+        for lim in limits:
+            chksum.update(lim)
+        new_sum = chksum.hexdigest()
+
+        # Now install it
+        with self.limit_lock:
+            if self.limit_sum == new_sum:
+                # No changes
+                return
+            self.limit_data = limits[:]
+            self.limit_sum = new_sum
+
+    def get_limits(self, db, limit_sum=None):
+        """
+        Gets the current limit data if it is different from the data
+        indicated by limit_sum.  The db argument is used for hydrating
+        the limit objects.  Raises a NoChangeException if the
+        limit_sum represents no change, otherwise returns a tuple
+        consisting of the current limit_sum and a list of Limit
+        objects.
+        """
+
+        with self.limit_lock:
+            # Any changes?
+            if limit_sum and self.limit_sum == limit_sum:
+                raise NoChangeException()
+
+            # Return a tuple of the limits and limit sum
+            lims = [limits.Limit.hydrate(db, msgpack.loads(lim))
+                    for lim in self.limit_data]
+            return (self.limit_sum, lims)
 
 
 class ControlDaemon(object):
@@ -44,6 +117,7 @@ class ControlDaemon(object):
         self._db = db
         self._middleware = middleware
         self._config = config
+        self._limits = LimitData()
 
         # Need a semaphore to cover reloads in action
         self._pending = eventlet.semaphore.Semaphore()
@@ -145,17 +219,7 @@ class ControlDaemon(object):
         try:
             # Load all the limits
             key = self._config.get('limits_key', 'limits')
-            lims = [limits.Limit.hydrate(self._db, msgpack.loads(lim))
-                    for lim in self._db.zrange(key, 0, -1)]
-
-            # Build the routes mapper
-            mapper = routes.Mapper(register=False)
-            for lim in lims:
-                lim._route(mapper)
-
-            # Install it
-            self._middleware.limits = lims
-            self._middleware.mapper = mapper
+            self._limits.set_limits(self._db.zrange(key, 0, -1))
         except Exception:
             # Log an error
             LOG.exception("Could not load limits")

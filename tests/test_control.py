@@ -1,8 +1,8 @@
+import hashlib
 import random
 
 import eventlet
 import msgpack
-import routes
 
 from turnstile import control
 from turnstile import limits
@@ -31,16 +31,76 @@ class ControlDaemonTest(control.ControlDaemon):
         raise Exception("Failure")
 
 
-class FakeMapper(tests.GenericFakeClass):
-    def __init__(self, *args, **kwargs):
-        super(FakeMapper, self).__init__(*args, **kwargs)
+class TestLimitData(tests.TestCase):
+    def setUp(self):
+        super(TestLimitData, self).setUp()
 
-        self.routes = []
+        self.stubs.Set(limits, 'Limit', db_fixture.FakeLimit)
+        self.stubs.Set(msgpack, 'loads', lambda x: dict(limit=x))
 
+        # Generate some interesting data for use by the tests
+        chksum = hashlib.md5()
+        chksum.update('')
+        self.empty_chksum = chksum.hexdigest()
 
-class FakeFailingMapper(FakeMapper):
-    def __init__(self, *args, **kwargs):
-        raise Exception("Fake-out")
+        self.test_data = ["Nobody", "inspects", "the", "spammish",
+                          "repetition"]
+        chksum = hashlib.md5()
+        for datum in self.test_data:
+            chksum.update(datum)
+        self.test_chksum = chksum.hexdigest()
+
+    def test_init(self):
+        ld = control.LimitData()
+
+        # Test that this is initialized properly
+        self.assertEqual(ld.limit_data, [])
+        self.assertEqual(ld.limit_sum, self.empty_chksum)
+        self.assertIsInstance(ld.limit_lock, eventlet.semaphore.Semaphore)
+
+    def test_set_limits(self):
+        ld = control.LimitData()
+
+        # Set the test data...
+        ld.set_limits(self.test_data)
+
+        self.assertEqual(ld.limit_data, self.test_data)
+        self.assertEqual(ld.limit_sum, self.test_chksum)
+        self.assertEqual(ld.limit_lock.balance, 1)
+
+    def test_get_limits_nosum(self):
+        ld = control.LimitData()
+        ld.limit_data = self.test_data
+        ld.limit_sum = self.test_chksum
+
+        chksum, lims = ld.get_limits('db')
+
+        self.assertEqual(chksum, self.test_chksum)
+        self.assertEqual(len(lims), len(self.test_data))
+        for idx, lim in enumerate(lims):
+            self.assertEqual(lim.args, ('db',))
+            self.assertEqual(lim.kwargs, dict(limit=self.test_data[idx]))
+
+    def test_get_limits_wrongsum(self):
+        ld = control.LimitData()
+        ld.limit_data = self.test_data
+        ld.limit_sum = self.test_chksum
+
+        chksum, lims = ld.get_limits('db', self.empty_chksum)
+
+        self.assertEqual(chksum, self.test_chksum)
+        self.assertEqual(len(lims), len(self.test_data))
+        for idx, lim in enumerate(lims):
+            self.assertEqual(lim.args, ('db',))
+            self.assertEqual(lim.kwargs, dict(limit=self.test_data[idx]))
+
+    def test_get_limits_samesum(self):
+        ld = control.LimitData()
+        ld.limit_data = self.test_data
+        ld.limit_sum = self.test_chksum
+
+        self.assertRaises(control.NoChangeException, ld.get_limits,
+                          'db', self.test_chksum)
 
 
 class TestControlDaemon(tests.TestCase):
@@ -70,10 +130,8 @@ class TestControlDaemon(tests.TestCase):
     def stub_start(self):
         self.stubs.Set(control.ControlDaemon, '_start', lambda x: None)
 
-    def stub_reload(self, mapper=FakeMapper):
-        self.stubs.Set(msgpack, 'loads', lambda x: x)
-        self.stubs.Set(limits, 'Limit', db_fixture.FakeLimit)
-        self.stubs.Set(routes, 'Mapper', mapper)
+    def stub_reload(self):
+        self.stubs.Set(control, 'LimitData', db_fixture.FakeLimitData)
 
     def test_init(self):
         self.stub_spawn(True)
@@ -523,14 +581,9 @@ class TestControlDaemon(tests.TestCase):
         daemon._reload()
 
         self.assertEqual(db._actions, [('zrange', 'limits', 0, -1)])
-        self.assertTrue(hasattr(middleware, 'mapper'))
-        self.assertIsInstance(middleware.mapper, FakeMapper)
-        self.assertEqual(middleware.mapper.kwargs, dict(register=False))
-        self.assertEqual(len(middleware.mapper.routes), 2)
-        for idx, route in enumerate(middleware.mapper.routes):
-            self.assertIsInstance(route, db_fixture.FakeLimit)
-            self.assertEqual(route.args, (db,))
-            self.assertEqual(route.kwargs, dict(limit='limit%d' % (idx + 1)))
+        self.assertEqual(daemon._limits.limit_data, [dict(limit='limit1'),
+                                                     dict(limit='limit2')])
+        self.assertEqual(daemon._limits.limit_sum, 2)
         self.assertEqual(daemon._pending.balance, 1)
 
     def test_reload_alternate(self):
@@ -548,21 +601,17 @@ class TestControlDaemon(tests.TestCase):
         daemon._reload()
 
         self.assertEqual(db._actions, [('zrange', 'alternate', 0, -1)])
-        self.assertTrue(hasattr(middleware, 'mapper'))
-        self.assertIsInstance(middleware.mapper, FakeMapper)
-        self.assertEqual(middleware.mapper.kwargs, dict(register=False))
-        self.assertEqual(len(middleware.mapper.routes), 2)
-        for idx, route in enumerate(middleware.mapper.routes):
-            self.assertIsInstance(route, db_fixture.FakeLimit)
-            self.assertEqual(route.args, (db,))
-            self.assertEqual(route.kwargs, dict(limit='limit%d' % (idx + 1)))
+        self.assertEqual(daemon._limits.limit_data, [dict(limit='limit1'),
+                                                     dict(limit='limit2')])
+        self.assertEqual(daemon._limits.limit_sum, 2)
         self.assertEqual(daemon._pending.balance, 1)
 
     def test_reload_failure(self):
         self.stub_start()
-        self.stub_reload(FakeFailingMapper)
+        self.stub_reload()
 
         db = db_fixture.FakeDatabase()
+        db._fakedb['limits'] = []
         db._fakedb['errors'] = set()
         middleware = tests.GenericFakeClass()
         daemon = control.ControlDaemon(db, middleware, {})
@@ -585,9 +634,10 @@ class TestControlDaemon(tests.TestCase):
 
     def test_reload_failure_alternate(self):
         self.stub_start()
-        self.stub_reload(FakeFailingMapper)
+        self.stub_reload()
 
         db = db_fixture.FakeDatabase()
+        db._fakedb['limits'] = []
         db._fakedb['errors_set'] = set()
         middleware = tests.GenericFakeClass()
         daemon = control.ControlDaemon(db, middleware, dict(

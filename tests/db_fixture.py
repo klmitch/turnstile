@@ -1,5 +1,6 @@
 import redis
 
+from turnstile import control
 from turnstile import database
 
 import tests
@@ -141,3 +142,21 @@ class FakeLimit(tests.GenericFakeClass):
 
     def _route(self, mapper):
         mapper.routes.append(self)
+
+
+class FakeLimitData(object):
+    def __init__(self, limits=[]):
+        self.limit_data = limits[:]
+        self.limit_sum = len(limits)
+
+    def set_limits(self, limits):
+        if not limits:
+            raise Exception("Fake-out failure")
+        self.limit_data = limits[:]
+        self.limit_sum = len(limits)
+
+    def get_limits(self, db, limit_sum=None):
+        if limit_sum and self.limit_sum == limit_sum:
+            raise control.NoChangeException()
+        lims = [FakeLimit.hydrate(db, lim) for lim in self.limit_data]
+        return (self.limit_sum, lims)

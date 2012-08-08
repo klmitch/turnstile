@@ -14,11 +14,19 @@
 #    under the License.
 
 import collections
+import logging
 import math
+import traceback
+
+import eventlet
+import routes
 
 from turnstile import control
 from turnstile import database
 from turnstile import utils
+
+
+LOG = logging.getLogger('turnstile')
 
 
 class HeadersDict(collections.MutableMapping):
@@ -157,7 +165,9 @@ class TurnstileMiddleware(object):
         # Save the application
         self.app = app
         self.limits = []
+        self.limit_sum = None
         self.mapper = None
+        self.mapper_lock = eventlet.semaphore.Semaphore()
 
         # Split up the configuration into groups of related variables
         self.config = {
@@ -191,6 +201,53 @@ class TurnstileMiddleware(object):
         self.control_daemon = control.ControlDaemon(self.db, self,
                                                     control_args)
 
+    def recheck_limits(self):
+        """
+        Re-check that the cached limits are the current limits.
+        """
+
+        limit_data = self.control_daemon._limits
+
+        try:
+            # Get the new checksum and list of limits
+            new_sum, new_limits = limit_data.get_limits(self.db,
+                                                        self.limit_sum)
+
+            # Build a new mapper
+            mapper = routes.Mapper(register=False)
+            for lim in new_limits:
+                lim._route(mapper)
+
+            # Save the new data
+            self.limits = new_limits
+            self.limit_sum = new_sum
+            self.mapper = mapper
+        except control.NoChangeException:
+            # No changes to process; just keep going...
+            return
+        except Exception:
+            # Log an error
+            LOG.exception("Could not load limits")
+
+            # Get our error set and publish channel
+            control_args = self.config.get('control', {})
+            error_key = control_args.get('errors_key', 'errors')
+            error_channel = control_args.get('errors_channel', 'errors')
+
+            # Get an informative message
+            msg = "Failed to load limits: " + traceback.format_exc()
+
+            # Store the message into the error set.  We use a set
+            # here because it's likely that more than one node
+            # will generate the same message if there is an error,
+            # and this avoids an explosion in the size of the set.
+            with utils.ignore_except():
+                self.db.sadd(error_key, msg)
+
+            # Publish the message to a channel
+            with utils.ignore_except():
+                self.db.publish(error_channel, msg)
+
     def __call__(self, environ, start_response):
         """
         Implements the processing of the turnstile middleware.  Walks
@@ -200,19 +257,27 @@ class TurnstileMiddleware(object):
         is needed, the request is passed on to the application.
         """
 
-        # Run the request preprocessors
-        for preproc in self.preprocessors:
-            # Preprocessors are expected to modify the environment;
-            # they are helpers to set up variables expected by the
-            # limit classes.
-            preproc(self, environ)
+        with self.mapper_lock:
+            # Check for updates to the limits
+            self.recheck_limits()
+
+            # Grab the current mapper
+            mapper = self.mapper
+
+            # Run the request preprocessors; some may want to refer to
+            # the limit data, so protect this in the mapper_lock
+            for preproc in self.preprocessors:
+                # Preprocessors are expected to modify the environment;
+                # they are helpers to set up variables expected by the
+                # limit classes.
+                preproc(self, environ)
 
         # Make configuration available to the limit classes as well
         environ['turnstile.config'] = self.config
 
         # Now, if we have a mapper, run through it
-        if self.mapper:
-            self.mapper.routematch(environ=environ)
+        if mapper:
+            mapper.routematch(environ=environ)
 
         # If there were any delays, deal with them
         if 'turnstile.delay' in environ and environ['turnstile.delay']:
