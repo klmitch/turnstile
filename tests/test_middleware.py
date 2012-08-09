@@ -418,7 +418,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         ld = db_fixture.FakeLimitData()
         mid = middleware.TurnstileMiddleware('app', {})
         mid.db = db
-        mid.control_daemon._limits = ld
+        mid.control_daemon.get_limits = lambda: ld
         mid.limits = None  # Check that these get updated
         mid.mapper = None
         mid.recheck_limits()
@@ -437,7 +437,7 @@ class TestTurnstileMiddleware(tests.TestCase):
                                        dict(limit='limit2')])
         mid = middleware.TurnstileMiddleware('app', {})
         mid.db = db
-        mid.control_daemon._limits = ld
+        mid.control_daemon.get_limits = lambda: ld
         mid.limits = None  # Check that these get updated
         mid.mapper = None
         mid.recheck_limits()
@@ -464,7 +464,7 @@ class TestTurnstileMiddleware(tests.TestCase):
                                        dict(limit='limit2')])
         mid = middleware.TurnstileMiddleware('app', {})
         mid.db = db
-        mid.control_daemon._limits = ld
+        mid.control_daemon.get_limits = lambda: ld
         mid.limits = None  # Check that these don't get updated
         mid.mapper = None
         mid.limit_sum = ld.limit_sum
@@ -483,7 +483,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         ld = db_fixture.FakeLimitData()
         mid = middleware.TurnstileMiddleware('app', {})
         mid.db = db
-        mid.control_daemon._limits = ld
+        mid.control_daemon.get_limits = lambda: ld
         mid.limits = None  # Check that these don't get updated
         mid.mapper = None
         mid.recheck_limits()
@@ -514,7 +514,7 @@ class TestTurnstileMiddleware(tests.TestCase):
                 'control.errors_channel': 'errors_channel',
                 })
         mid.db = db
-        mid.control_daemon._limits = ld
+        mid.control_daemon.get_limits = lambda: ld
         mid.limits = None  # Check that these don't get updated
         mid.mapper = None
         mid.recheck_limits()

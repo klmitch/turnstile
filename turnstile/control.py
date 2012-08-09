@@ -125,18 +125,18 @@ class ControlDaemon(object):
         """
 
         # Save some relevant information
-        self._db = db
-        self._middleware = middleware
-        self._config = config
-        self._limits = LimitData()
+        self.db = db
+        self.middleware = middleware
+        self.config = config
+        self.limits = LimitData()
 
         # Need a semaphore to cover reloads in action
-        self._pending = eventlet.semaphore.Semaphore()
+        self.pending = eventlet.semaphore.Semaphore()
 
         # Start the daemon
-        self._start()
+        self.start()
 
-    def _start(self):
+    def start(self):
         """
         Starts the ControlDaemon by launching the listening thread and
         triggering the initial limits load.  Broken out of __init__()
@@ -144,12 +144,12 @@ class ControlDaemon(object):
         """
 
         # Spawn the listening thread
-        self._listen_thread = eventlet.spawn_n(self._listen)
+        self.listen_thread = eventlet.spawn_n(self.listen)
 
         # Now do the initial load
-        self._reload()
+        self.reload()
 
-    def _listen(self):
+    def listen(self):
         """
         Listen for incoming control messages.
 
@@ -162,12 +162,12 @@ class ControlDaemon(object):
 
         # Need a pub-sub object
         kwargs = {}
-        if 'shard_hint' in self._config:
-            kwargs['shard_hint'] = self._config['shard_hint']
-        pubsub = self._db.pubsub(**kwargs)
+        if 'shard_hint' in self.config:
+            kwargs['shard_hint'] = self.config['shard_hint']
+        pubsub = self.db.pubsub(**kwargs)
 
         # Subscribe to the right channel(s)...
-        channel = self._config.get('channel', 'control')
+        channel = self.config.get('channel', 'control')
         pubsub.subscribe(channel)
 
         # Now we listen...
@@ -203,7 +203,18 @@ class ControlDaemon(object):
                                   (command, arglist))
                     continue
 
-    def _reload(self):
+    def get_limits(self):
+        """
+        Retrieve the LimitData object the middleware will use for
+        getting the limits.  This is broken out into a function so
+        that it can be overridden in multi-process configurations to
+        return a LimitData subclass which will query the master
+        LimitData in the ControlDaemon process.
+        """
+
+        return self.limits
+
+    def reload(self):
         """
         Reloads the limits configuration from the database.
 
@@ -217,22 +228,22 @@ class ControlDaemon(object):
 
         # Acquire the pending semaphore.  If we fail, exit--someone
         # else is already doing the reload
-        if not self._pending.acquire(False):
+        if not self.pending.acquire(False):
             return
 
         # Do the remaining steps in a try/finally block so we make
         # sure to release the semaphore
         try:
             # Load all the limits
-            key = self._config.get('limits_key', 'limits')
-            self._limits.set_limits(self._db.zrange(key, 0, -1))
+            key = self.config.get('limits_key', 'limits')
+            self.limits.set_limits(self.db.zrange(key, 0, -1))
         except Exception:
             # Log an error
             LOG.exception("Could not load limits")
 
             # Get our error set and publish channel
-            error_key = self._config.get('errors_key', 'errors')
-            error_channel = self._config.get('errors_channel', 'errors')
+            error_key = self.config.get('errors_key', 'errors')
+            error_channel = self.config.get('errors_channel', 'errors')
 
             # Get an informative message
             msg = "Failed to load limits: " + traceback.format_exc()
@@ -242,13 +253,13 @@ class ControlDaemon(object):
             # generate the same message if there is an error, and this
             # avoids an explosion in the size of the set.
             with utils.ignore_except():
-                self._db.sadd(error_key, msg)
+                self.db.sadd(error_key, msg)
 
             # Publish the message to a channel
             with utils.ignore_except():
-                self._db.publish(error_channel, msg)
+                self.db.publish(error_channel, msg)
         finally:
-            self._pending.release()
+            self.pending.release()
 
 
 def register(name, func=None):
@@ -292,7 +303,7 @@ def ping(daemon, channel, data=None):
         return
 
     # Get our configured node name
-    node_name = daemon._config.get('node_name')
+    node_name = daemon.config.get('node_name')
 
     # Format the response
     reply = ['pong']
@@ -303,7 +314,7 @@ def ping(daemon, channel, data=None):
 
     # And send it
     with utils.ignore_except():
-        daemon._db.publish(channel, ':'.join(reply))
+        daemon.db.publish(channel, ':'.join(reply))
 
 
 @register('reload')
@@ -349,14 +360,14 @@ def reload(daemon, load_type=None, spread=None):
         # Use configured set-up; see if we have a spread
         # configured
         try:
-            spread = float(daemon._config['reload_spread'])
+            spread = float(daemon.config['reload_spread'])
         except (TypeError, ValueError, KeyError):
             # No valid configuration
             spread = None
 
     if spread:
         # Apply a randomization to spread the load around
-        eventlet.spawn_after(random.random() * spread, daemon._reload)
+        eventlet.spawn_after(random.random() * spread, daemon.reload)
     else:
         # Spawn in immediate mode
-        eventlet.spawn_n(daemon._reload)
+        eventlet.spawn_n(daemon.reload)

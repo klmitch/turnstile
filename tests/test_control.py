@@ -21,7 +21,7 @@ class ControlDaemonTest(control.ControlDaemon):
         self._commands['failure'] = self.failure
         self._command_log = []
 
-    def _start(self):
+    def start(self):
         pass
 
     def _internal(self, daemon, *args):
@@ -132,7 +132,7 @@ class TestControlDaemon(tests.TestCase):
         self.stubs.Set(eventlet, 'spawn_after', fake_spawn_after)
 
     def stub_start(self):
-        self.stubs.Set(control.ControlDaemon, '_start', lambda x: None)
+        self.stubs.Set(control.ControlDaemon, 'start', lambda x: None)
 
     def stub_reload(self):
         self.stubs.Set(control, 'LimitData', db_fixture.FakeLimitData)
@@ -143,16 +143,16 @@ class TestControlDaemon(tests.TestCase):
         def fake_reload(obj):
             obj._reloaded = True
 
-        self.stubs.Set(control.ControlDaemon, '_listen', lambda obj: 'listen')
-        self.stubs.Set(control.ControlDaemon, '_reload', fake_reload)
+        self.stubs.Set(control.ControlDaemon, 'listen', lambda obj: 'listen')
+        self.stubs.Set(control.ControlDaemon, 'reload', fake_reload)
 
         daemon = control.ControlDaemon('db', 'middleware', 'config')
 
-        self.assertEqual(daemon._db, 'db')
-        self.assertEqual(daemon._middleware, 'middleware')
-        self.assertEqual(daemon._config, 'config')
-        self.assertIsInstance(daemon._pending, eventlet.semaphore.Semaphore)
-        self.assertEqual(daemon._listen_thread, 'listen')
+        self.assertEqual(daemon.db, 'db')
+        self.assertEqual(daemon.middleware, 'middleware')
+        self.assertEqual(daemon.config, 'config')
+        self.assertIsInstance(daemon.pending, eventlet.semaphore.Semaphore)
+        self.assertEqual(daemon.listen_thread, 'listen')
         self.assertEqual(daemon._reloaded, True)
 
     def test_listen_basic(self):
@@ -160,7 +160,7 @@ class TestControlDaemon(tests.TestCase):
 
         db = db_fixture.FakeDatabase()
         daemon = control.ControlDaemon(db, 'middleware', {})
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(db._actions, [('pubsub', (), {})])
         self.assertIsInstance(db._pubsub, db_fixture.PubSub)
@@ -176,7 +176,7 @@ class TestControlDaemon(tests.TestCase):
         db = db_fixture.FakeDatabase()
         daemon = control.ControlDaemon(db, 'middleware',
                                        dict(shard_hint='shard'))
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(db._actions, [('pubsub', (),
                                         dict(shard_hint='shard'))])
@@ -193,7 +193,7 @@ class TestControlDaemon(tests.TestCase):
         db = db_fixture.FakeDatabase()
         daemon = control.ControlDaemon(db, 'middleware',
                                        dict(channel='spam'))
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(db._actions, [('pubsub', (), {})])
         self.assertIsInstance(db._pubsub, db_fixture.PubSub)
@@ -211,7 +211,7 @@ class TestControlDaemon(tests.TestCase):
                 channel='control',
                 data='test:foo'))
         daemon = ControlDaemonTest(db, 'middleware', {})
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
 
@@ -223,7 +223,7 @@ class TestControlDaemon(tests.TestCase):
                 channel='wrongchannel',
                 data='test:foo'))
         daemon = ControlDaemonTest(db, 'middleware', {})
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
 
@@ -235,7 +235,7 @@ class TestControlDaemon(tests.TestCase):
                 channel='control',
                 data=':foo'))
         daemon = ControlDaemonTest(db, 'middleware', {})
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
 
@@ -247,7 +247,7 @@ class TestControlDaemon(tests.TestCase):
                 channel='control',
                 data='_internal:foo'))
         daemon = ControlDaemonTest(db, 'middleware', {})
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
         self.assertEqual(self.log_messages, [
@@ -262,7 +262,7 @@ class TestControlDaemon(tests.TestCase):
                 channel='control',
                 data='unknown:foo'))
         daemon = ControlDaemonTest(db, 'middleware', {})
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
         self.assertEqual(self.log_messages, [
@@ -277,7 +277,7 @@ class TestControlDaemon(tests.TestCase):
                 channel='control',
                 data='test:arg1:arg2'))
         daemon = ControlDaemonTest(db, 'middleware', {})
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
         self.assertEqual(len(self.log_messages), 1)
@@ -293,7 +293,7 @@ class TestControlDaemon(tests.TestCase):
                 channel='control',
                 data='failure:arg1:arg2'))
         daemon = ControlDaemonTest(db, 'middleware', {})
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(daemon._command_log, [('failure', ('arg1', 'arg2'))])
         self.assertEqual(len(self.log_messages), 1)
@@ -309,7 +309,7 @@ class TestControlDaemon(tests.TestCase):
                 channel='control',
                 data='test:arg'))
         daemon = ControlDaemonTest(db, 'middleware', {})
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(daemon._command_log, [('test', 'arg')])
         self.assertEqual(self.log_messages, [])
@@ -323,7 +323,7 @@ class TestControlDaemon(tests.TestCase):
                 data='test:arg'))
         daemon = ControlDaemonTest(db, 'middleware',
                                    dict(channel='alternate'))
-        daemon._listen()
+        daemon.listen()
 
         self.assertEqual(daemon._command_log, [('test', 'arg')])
         self.assertEqual(self.log_messages, [])
@@ -383,7 +383,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon)
 
         self.assertEqual(self.spawns, [
-                ('spawn_n', daemon._reload, (), {})
+                ('spawn_n', daemon.reload, (), {})
                 ])
 
     def test_reload_command_noargs_configured_bad(self):
@@ -395,7 +395,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon)
 
         self.assertEqual(self.spawns, [
-                ('spawn_n', daemon._reload, (), {})
+                ('spawn_n', daemon.reload, (), {})
                 ])
 
     def test_reload_command_noargs_configured(self):
@@ -407,7 +407,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon)
 
         self.assertEqual(self.spawns, [
-                ('spawn_after', 23.0, daemon._reload, (), {})
+                ('spawn_after', 23.0, daemon.reload, (), {})
                 ])
 
     def test_reload_command_badtype(self):
@@ -418,7 +418,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'badtype')
 
         self.assertEqual(self.spawns, [
-                ('spawn_n', daemon._reload, (), {})
+                ('spawn_n', daemon.reload, (), {})
                 ])
 
     def test_reload_command_badtype_configured_bad(self):
@@ -430,7 +430,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'badtype')
 
         self.assertEqual(self.spawns, [
-                ('spawn_n', daemon._reload, (), {})
+                ('spawn_n', daemon.reload, (), {})
                 ])
 
     def test_reload_command_badtype_configured(self):
@@ -442,7 +442,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'badtype')
 
         self.assertEqual(self.spawns, [
-                ('spawn_after', 23.0, daemon._reload, (), {})
+                ('spawn_after', 23.0, daemon.reload, (), {})
                 ])
 
     def test_reload_command_immediate(self):
@@ -453,7 +453,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'immediate')
 
         self.assertEqual(self.spawns, [
-                ('spawn_n', daemon._reload, (), {})
+                ('spawn_n', daemon.reload, (), {})
                 ])
 
     def test_reload_command_immediate_configured(self):
@@ -465,7 +465,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'immediate')
 
         self.assertEqual(self.spawns, [
-                ('spawn_n', daemon._reload, (), {})
+                ('spawn_n', daemon.reload, (), {})
                 ])
 
     def test_reload_command_spread(self):
@@ -476,7 +476,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'spread')
 
         self.assertEqual(self.spawns, [
-                ('spawn_n', daemon._reload, (), {})
+                ('spawn_n', daemon.reload, (), {})
                 ])
 
     def test_reload_command_spread_configured_bad(self):
@@ -488,7 +488,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'spread')
 
         self.assertEqual(self.spawns, [
-                ('spawn_n', daemon._reload, (), {})
+                ('spawn_n', daemon.reload, (), {})
                 ])
 
     def test_reload_command_spread_configured(self):
@@ -500,7 +500,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'spread')
 
         self.assertEqual(self.spawns, [
-                ('spawn_after', 23.0, daemon._reload, (), {})
+                ('spawn_after', 23.0, daemon.reload, (), {})
                 ])
 
     def test_reload_command_spread_given(self):
@@ -511,7 +511,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'spread', '18')
 
         self.assertEqual(self.spawns, [
-                ('spawn_after', 18.0, daemon._reload, (), {})
+                ('spawn_after', 18.0, daemon.reload, (), {})
                 ])
 
     def test_reload_command_spread_bad_configured(self):
@@ -523,7 +523,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'spread', '18.0.5')
 
         self.assertEqual(self.spawns, [
-                ('spawn_after', 23.0, daemon._reload, (), {})
+                ('spawn_after', 23.0, daemon.reload, (), {})
                 ])
 
     def test_reload_command_spread_given_configured(self):
@@ -535,7 +535,7 @@ class TestControlDaemon(tests.TestCase):
         control.reload(daemon, 'spread', '18')
 
         self.assertEqual(self.spawns, [
-                ('spawn_after', 18.0, daemon._reload, (), {})
+                ('spawn_after', 18.0, daemon.reload, (), {})
                 ])
 
     def test_reload_noacquire(self):
@@ -549,8 +549,8 @@ class TestControlDaemon(tests.TestCase):
             ]
         middleware = tests.GenericFakeClass()
         daemon = control.ControlDaemon(db, middleware, {})
-        daemon._pending.acquire()
-        daemon._reload()
+        daemon.pending.acquire()
+        daemon.reload()
 
         self.assertEqual(db._actions, [])
         self.assertFalse(hasattr(middleware, 'mapper'))
@@ -566,13 +566,13 @@ class TestControlDaemon(tests.TestCase):
             ]
         middleware = tests.GenericFakeClass()
         daemon = control.ControlDaemon(db, middleware, {})
-        daemon._reload()
+        daemon.reload()
 
         self.assertEqual(db._actions, [('zrange', 'limits', 0, -1)])
-        self.assertEqual(daemon._limits.limit_data, [dict(limit='limit1'),
+        self.assertEqual(daemon.limits.limit_data, [dict(limit='limit1'),
                                                      dict(limit='limit2')])
-        self.assertEqual(daemon._limits.limit_sum, 2)
-        self.assertEqual(daemon._pending.balance, 1)
+        self.assertEqual(daemon.limits.limit_sum, 2)
+        self.assertEqual(daemon.pending.balance, 1)
 
     def test_reload_alternate(self):
         self.stub_start()
@@ -586,13 +586,13 @@ class TestControlDaemon(tests.TestCase):
         middleware = tests.GenericFakeClass()
         daemon = control.ControlDaemon(db, middleware,
                                         dict(limits_key='alternate'))
-        daemon._reload()
+        daemon.reload()
 
         self.assertEqual(db._actions, [('zrange', 'alternate', 0, -1)])
-        self.assertEqual(daemon._limits.limit_data, [dict(limit='limit1'),
+        self.assertEqual(daemon.limits.limit_data, [dict(limit='limit1'),
                                                      dict(limit='limit2')])
-        self.assertEqual(daemon._limits.limit_sum, 2)
-        self.assertEqual(daemon._pending.balance, 1)
+        self.assertEqual(daemon.limits.limit_sum, 2)
+        self.assertEqual(daemon.pending.balance, 1)
 
     def test_reload_failure(self):
         self.stub_start()
@@ -603,7 +603,7 @@ class TestControlDaemon(tests.TestCase):
         db._fakedb['errors'] = set()
         middleware = tests.GenericFakeClass()
         daemon = control.ControlDaemon(db, middleware, {})
-        daemon._reload()
+        daemon.reload()
 
         self.assertEqual(len(self.log_messages), 1)
         self.assertTrue(self.log_messages[0].startswith(
@@ -618,7 +618,7 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(db._actions[2][1], 'errors')
         self.assertTrue(db._actions[2][2].startswith(
                 'Failed to load limits: '))
-        self.assertEqual(daemon._pending.balance, 1)
+        self.assertEqual(daemon.pending.balance, 1)
 
     def test_reload_failure_alternate(self):
         self.stub_start()
@@ -632,7 +632,7 @@ class TestControlDaemon(tests.TestCase):
                 errors_key='errors_set',
                 errors_channel='errors_channel',
                 ))
-        daemon._reload()
+        daemon.reload()
 
         self.assertEqual(len(self.log_messages), 1)
         self.assertTrue(self.log_messages[0].startswith(
@@ -647,4 +647,4 @@ class TestControlDaemon(tests.TestCase):
         self.assertEqual(db._actions[2][1], 'errors_channel')
         self.assertTrue(db._actions[2][2].startswith(
                 'Failed to load limits: '))
-        self.assertEqual(daemon._pending.balance, 1)
+        self.assertEqual(daemon.pending.balance, 1)

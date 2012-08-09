@@ -206,7 +206,7 @@ class TurnstileMiddleware(object):
         Re-check that the cached limits are the current limits.
         """
 
-        limit_data = self.control_daemon._limits
+        limit_data = self.control_daemon.get_limits()
 
         try:
             # Get the new checksum and list of limits
