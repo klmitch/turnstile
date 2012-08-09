@@ -107,6 +107,17 @@ class ControlDaemon(object):
     the limit configuration from the database.
     """
 
+    _commands = {}
+
+    @classmethod
+    def _register(cls, name, func):
+        """
+        Register func as a recognized control command with the given
+        name.
+        """
+
+        cls._commands[name] = func
+
     def __init__(self, db, middleware, config):
         """
         Initialize the ControlDaemon.  Starts the listening thread and
@@ -173,25 +184,20 @@ class ControlDaemon(object):
 
                 # Don't do anything with internal commands
                 if command[0] == '_':
-                    LOG.error("Cannot call internal method %r" % command)
+                    LOG.error("Cannot call internal command %r" % command)
                     continue
 
                 # Don't do anything with missing commands
                 try:
-                    method = getattr(self, command)
-                except AttributeError:
+                    func = self._commands[command]
+                except KeyError:
                     LOG.error("No such command %r" % command)
-                    continue
-
-                # Don't do anything with non-callables
-                if not callable(method):
-                    LOG.error("Command %r is not callable" % command)
                     continue
 
                 # Execute the desired command
                 arglist = args.split(':')
                 try:
-                    method(*arglist)
+                    func(self, *arglist)
                 except Exception:
                     LOG.exception("Failed to execute command %r arguments %r" %
                                   (command, arglist))
@@ -244,86 +250,113 @@ class ControlDaemon(object):
         finally:
             self._pending.release()
 
-    def ping(self, channel, data=None):
-        """
-        Process the 'ping' control message.
 
-        :param channel: The publish channel to which to send the
-                        response.
-        :param data: Optional extra data.  Will be returned as the
-                     second argument of the response.
+def register(name, func=None):
+    """
+    Function or decorator which registers a given function as a
+    recognized control command.
+    """
 
-        Responds to the named channel with a command of 'pong' and
-        with the node_name (if configured) and provided data as
-        arguments.
-        """
+    def decorator(func):
+        # Perform the registration
+        ControlDaemon._register(name, func)
+        return func
 
-        if not channel:
-            # No place to reply to
-            return
+    # If func was given, call the decorator, otherwise, return the
+    # decorator
+    if func:
+        return decorator(func)
+    else:
+        return decorator
 
-        # Get our configured node name
-        node_name = self._config.get('node_name')
 
-        # Format the response
-        reply = ['pong']
-        if node_name or data:
-            reply.append(node_name or '')
-        if data:
-            reply.append(data)
+@register('ping')
+def ping(daemon, channel, data=None):
+    """
+    Process the 'ping' control message.
 
-        # And send it
-        with utils.ignore_except():
-            self._db.publish(channel, ':'.join(reply))
+    :param daemon: The control daemon; used to get at the
+                   configuration and the database.
+    :param channel: The publish channel to which to send the
+                    response.
+    :param data: Optional extra data.  Will be returned as the
+                 second argument of the response.
 
-    def reload(self, load_type=None, spread=None):
-        """
-        Process the 'reload' control message.
+    Responds to the named channel with a command of 'pong' and
+    with the node_name (if configured) and provided data as
+    arguments.
+    """
 
-        :param load_type: Optional type of reload.  If given as
-                          'immediate', reload is triggered
-                          immediately.  If given as 'spread', reload
-                          is triggered after a random period of time
-                          in the interval (0.0, spread).  Otherwise,
-                          reload will be as configured.
-        :param spread: Optional argument for 'spread' load_type.  Must
-                       be a float giving the maximum length of the
-                       interval, in seconds, over which the reload
-                       should be scheduled.  If not provided, falls
-                       back to configuration.
+    if not channel:
+        # No place to reply to
+        return
 
-        If a recognized load_type is not given, or is given as
-        'spread' but the spread parameter is not a valid float, the
-        configuration will be checked for the 'redis.reload_spread'
-        value.  If that is a valid value, the reload will be randomly
-        scheduled for some time within the interval (0.0,
-        redis.reload_spread).
-        """
+    # Get our configured node name
+    node_name = daemon._config.get('node_name')
 
-        # Figure out what type of reload this needs to be
-        if load_type == 'immediate':
-            spread = None
-        elif load_type == 'spread':
-            try:
-                spread = float(spread)
-            except (TypeError, ValueError):
-                # Not a valid float; use the configured spread value
-                load_type = None
-        else:
+    # Format the response
+    reply = ['pong']
+    if node_name or data:
+        reply.append(node_name or '')
+    if data:
+        reply.append(data)
+
+    # And send it
+    with utils.ignore_except():
+        daemon._db.publish(channel, ':'.join(reply))
+
+
+@register('reload')
+def reload(daemon, load_type=None, spread=None):
+    """
+    Process the 'reload' control message.
+
+    :param daemon: The control daemon; used to get at the
+                   configuration and call the actual reload.
+    :param load_type: Optional type of reload.  If given as
+                      'immediate', reload is triggered
+                      immediately.  If given as 'spread', reload
+                      is triggered after a random period of time
+                      in the interval (0.0, spread).  Otherwise,
+                      reload will be as configured.
+    :param spread: Optional argument for 'spread' load_type.  Must
+                   be a float giving the maximum length of the
+                   interval, in seconds, over which the reload
+                   should be scheduled.  If not provided, falls
+                   back to configuration.
+
+    If a recognized load_type is not given, or is given as
+    'spread' but the spread parameter is not a valid float, the
+    configuration will be checked for the 'redis.reload_spread'
+    value.  If that is a valid value, the reload will be randomly
+    scheduled for some time within the interval (0.0,
+    redis.reload_spread).
+    """
+
+    # Figure out what type of reload this needs to be
+    if load_type == 'immediate':
+        spread = None
+    elif load_type == 'spread':
+        try:
+            spread = float(spread)
+        except (TypeError, ValueError):
+            # Not a valid float; use the configured spread value
             load_type = None
+    else:
+        load_type = None
 
-        if load_type is None:
-            # Use configured set-up; see if we have a spread
-            # configured
-            try:
-                spread = float(self._config['reload_spread'])
-            except (TypeError, ValueError, KeyError):
-                # No valid configuration
-                spread = None
+    if load_type is None:
+        # Use configured set-up; see if we have a spread
+        # configured
+        try:
+            spread = float(daemon._config['reload_spread'])
+        except (TypeError, ValueError, KeyError):
+            # No valid configuration
+            spread = None
 
-        if spread:
-            # Apply a randomization to spread the load around
-            eventlet.spawn_after(random.random() * spread, self._reload)
-        else:
-            # Spawn in immediate mode
-            eventlet.spawn_n(self._reload)
+    if spread:
+        # Apply a randomization to spread the load around
+        eventlet.spawn_after(random.random() * spread, daemon._reload)
+    else:
+        # Spawn in immediate mode
+        eventlet.spawn_n(daemon._reload)
