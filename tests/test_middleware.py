@@ -68,8 +68,16 @@ class FakeFailingRecheckMapper(FakeRecheckMapper):
 
 
 class FakeControlDaemon(tests.GenericFakeClass):
+    def __init__(self, *args, **kwargs):
+        super(FakeControlDaemon, self).__init__(*args, **kwargs)
+        self._started = False
+
     def start(self):
-        pass
+        self._started = True
+
+
+class FakeMultiControlDaemon(FakeControlDaemon):
+    pass
 
 
 class Response(object):
@@ -222,6 +230,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         super(TestTurnstileMiddleware, self).setUp()
         self.stubs.Set(database, 'initialize', lambda cfg: cfg)
         self.stubs.Set(control, 'ControlDaemon', FakeControlDaemon)
+        self.stubs.Set(control, 'MultiControlDaemon', FakeMultiControlDaemon)
 
     def stub_recheck_limits(self):
         self.stubs.Set(middleware.TurnstileMiddleware, 'recheck_limits',
@@ -243,7 +252,9 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(mid.preprocessors, [])
         self.assertEqual(mid.db, {})
         self.assertIsInstance(mid.control_daemon, tests.GenericFakeClass)
+        self.assertEqual(mid.control_daemon.__class__, FakeControlDaemon)
         self.assertEqual(mid.control_daemon.args, (mid.db, mid, {}))
+        self.assertEqual(mid.control_daemon._started, True)
 
     def test_init_config(self):
         config = {
@@ -255,6 +266,7 @@ class TestTurnstileMiddleware(tests.TestCase):
             'redis.host': 'example.com',
             'control.channel': 'spam',
             'control.node_name': 'node1',
+            'control.multi': 'on',
             }
         mid = middleware.TurnstileMiddleware('app', config)
 
@@ -276,14 +288,18 @@ class TestTurnstileMiddleware(tests.TestCase):
                 'control': dict(
                     channel='spam',
                     node_name='node1',
+                    multi='on',
                     ),
                 })
         self.assertEqual(mid.preprocessors, [preproc1, preproc2, preproc3])
         self.assertEqual(mid.db, dict(host='example.com'))
         self.assertIsInstance(mid.control_daemon, tests.GenericFakeClass)
+        self.assertEqual(mid.control_daemon.__class__, FakeMultiControlDaemon)
         self.assertEqual(mid.control_daemon.args,
                          (mid.db, mid, dict(channel='spam',
-                                            node_name='node1')))
+                                            node_name='node1',
+                                            multi='on')))
+        self.assertEqual(mid.control_daemon._started, True)
 
     def test_call_through(self):
         self.stub_recheck_limits()

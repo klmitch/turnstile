@@ -196,10 +196,16 @@ class TurnstileMiddleware(object):
         redis_args = self.config.get('redis', {})
         self.db = database.initialize(redis_args)
 
-        # And start up the control daemon
+        # Initialize the control daemon
         control_args = self.config.get('control', {})
-        self.control_daemon = control.ControlDaemon(self.db, self,
-                                                    control_args)
+        do_multi = control_args.get('multi', 'no').lower()
+        if do_multi in ('on', 'yes', 'true', '1'):
+            control_class = control.MultiControlDaemon
+        else:
+            control_class = control.ControlDaemon
+        self.control_daemon = control_class(self.db, self, control_args)
+
+        # Now start the control daemon
         self.control_daemon.start()
 
     def recheck_limits(self):

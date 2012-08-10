@@ -71,6 +71,11 @@ control.limits_key
   limits stored in the Redis database.  This option defaults to
   "limits".
 
+control.multi
+  If set to "on", "yes", "true", or "1", the control daemon will run
+  in a separate process.  This enables Turnstile to be compatible with
+  WSGI servers which use multiple worker processes.
+
 control.node_name
   The name of the node.  If provided, this option allows the
   specification of a recognizable name for the node.  Currently, this
