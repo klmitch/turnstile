@@ -15,6 +15,7 @@
 
 import hashlib
 import logging
+from multiprocessing import managers
 import random
 import traceback
 
@@ -259,6 +260,145 @@ class ControlDaemon(object):
                 self.db.publish(error_channel, msg)
         finally:
             self.pending.release()
+
+
+class RemoteLimitData(LimitData):
+    """
+    Provides remote access to limit data stored in another process.
+    This interacts with the multiprocessing module's Manager support
+    to provide seamless access to the limit data collected by (and
+    stored in) the MultiControlDaemon process.
+    """
+
+    def __init__(self, manager):
+        """
+        Initialize RemoteLimitData.  Stores a reference to the Manager
+        object.
+        """
+
+        self._manager = manager
+
+    @property
+    def limit_data(self):
+        """
+        Read-only access to the limit_data field stored on the remote
+        Manager object.
+        """
+
+        return self._manager.limit_data()._getvalue()
+
+    @property
+    def limit_sum(self):
+        """
+        Read-only access to the limit_sum field stored on the remote
+        Manager object.
+        """
+
+        return self._manager.limit_sum()._getvalue()
+
+    @property
+    def limit_lock(self):
+        """
+        Read-only access to the limit_lock field stored on the remote
+        Manager object.
+        """
+
+        return self._manager.limit_lock()
+
+    def set_limits(self, limits):
+        """
+        Remote limit data is treated as read-only (with external
+        update).
+        """
+
+        raise ValueError("Cannot set remote limit data")
+
+
+class AcquirerProxy(managers.BaseProxy):
+    """
+    Copied from multiprocessing.  Allows the limit_lock to be used to
+    acquire and release locks, complete with context manager-style
+    access.
+    """
+
+    _exposed_ = ('acquire', 'release')
+
+    def acquire(self, blocking=True):
+        """
+        Proxy the acquire() method of the semaphore.
+        """
+
+        return self._callmethod('acquire', (blocking,))
+
+    def release(self):
+        """
+        Proxy the release() method of the semaphore.
+        """
+
+        return self._callmethod('release')
+
+    def __enter__(self):
+        """
+        Proxy the __enter__() method of the semaphore.
+        """
+
+        return self._callmethod('acquire')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Proxy the __exit__() method of the semaphore.
+        """
+
+        return self._callmethod('release')
+
+
+class MultiControlDaemon(ControlDaemon):
+    """
+    A daemon process which listens for control messages and can reload
+    the limit configuration from the database.  Based on the
+    ControlDaemon, but starts a multiprocessing Manager process to
+    enable access to the limit data from multiple processes.
+    """
+
+    def __init__(self, db, middleware, config):
+        """
+        Initialize the MultiControlDaemon.  Starts the Manager and the
+        listening thread and triggers an immediate reload.
+        """
+
+        super(MultiControlDaemon, self).__init__(db, middleware, config)
+
+        # Build a LimitManager
+        class LimitManager(managers.BaseManager):
+            pass
+
+        LimitManager.register('limit_data', lambda: self.limits.limit_data)
+        LimitManager.register('limit_sum', lambda: self.limits.limit_sum)
+        LimitManager.register('limit_lock', lambda: self.limits.limit_lock,
+                              AcquirerProxy)
+
+        # Prepare the manager and the remote limit data
+        self.manager = LimitManager()
+        self.remote = RemoteLimitData(self.manager)
+
+    def get_limits(self):
+        """
+        Retrieve the LimitData object the middleware will use for
+        getting the limits.  This implementation returns a
+        RemoteLimitData instance that can access the LimitData stored
+        in the MultiControlDaemon process.
+        """
+
+        return self.remote
+
+    def start(self):
+        """
+        Starts the MultiControlDaemon by launching the Manager process
+        and directing it to launch the listening thread and trigger
+        the initial limits load.
+        """
+
+        self.manager.start(super(MultiControlDaemon, self).start)
 
 
 def register(name, func=None):

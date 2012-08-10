@@ -1,4 +1,5 @@
 import hashlib
+from multiprocessing import managers
 import random
 
 import eventlet
@@ -33,6 +34,14 @@ class ControlDaemonTest(control.ControlDaemon):
     def failure(self, daemon, *args):
         self._command_log.append(('failure', args))
         raise Exception("Failure")
+
+
+class FakeProxy(object):
+    def __init__(self, value):
+        self._value = value
+
+    def _getvalue(self):
+        return self._value
 
 
 class TestLimitData(tests.TestCase):
@@ -665,3 +674,59 @@ class TestControlDaemon(tests.TestCase):
         self.assertTrue(db._actions[2][2].startswith(
                 'Failed to load limits: '))
         self.assertEqual(daemon.pending.balance, 1)
+
+
+class TestRemoteLimitData(tests.TestCase):
+    def test_limit_data(self):
+        manager = tests.GenericFakeClass()
+        manager.limit_data = lambda: FakeProxy(['limit', 'data'])
+        ld = control.RemoteLimitData(manager)
+
+        self.assertEqual(ld.limit_data, ['limit', 'data'])
+
+    def test_limit_sum(self):
+        manager = tests.GenericFakeClass()
+        manager.limit_sum = lambda: FakeProxy('fake_chksum')
+        ld = control.RemoteLimitData(manager)
+
+        self.assertEqual(ld.limit_sum, 'fake_chksum')
+
+    def test_limit_lock(self):
+        manager = tests.GenericFakeClass()
+        manager.limit_lock = lambda: 'lock'
+        ld = control.RemoteLimitData(manager)
+
+        self.assertEqual(ld.limit_lock, 'lock')
+
+    def test_set_limits(self):
+        manager = tests.GenericFakeClass()
+        ld = control.RemoteLimitData(manager)
+
+        self.assertRaises(ValueError, ld.set_limits, ['limit', 'data'])
+
+
+class TestMultiControlDaemon(tests.TestCase):
+    def test_init(self):
+        daemon = control.MultiControlDaemon('db', 'middleware', 'config')
+
+        self.assertIsInstance(daemon.manager, managers.BaseManager)
+        self.assertIsInstance(daemon.remote, control.RemoteLimitData)
+        self.assertEqual(daemon.remote._manager, daemon.manager)
+
+    def test_get_limits(self):
+        daemon = control.MultiControlDaemon('db', 'middleware', 'config')
+        result = daemon.get_limits()
+
+        self.assertEqual(result, daemon.remote)
+
+    def test_start(self):
+        daemon = control.MultiControlDaemon('db', 'middleware', 'config')
+        super_start = super(control.MultiControlDaemon, daemon).start
+
+        class FakeManager(object):
+            def start(manager, init, initargs=None):
+                self.assertEqual(init, super_start)
+                self.assertEqual(initargs, None)
+
+        daemon.manager = FakeManager()
+        daemon.start()
