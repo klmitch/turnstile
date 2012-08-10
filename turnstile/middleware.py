@@ -200,6 +200,7 @@ class TurnstileMiddleware(object):
         control_args = self.config.get('control', {})
         self.control_daemon = control.ControlDaemon(self.db, self,
                                                     control_args)
+        self.control_daemon.start()
 
     def recheck_limits(self):
         """

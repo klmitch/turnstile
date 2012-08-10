@@ -147,11 +147,28 @@ class TestControlDaemon(tests.TestCase):
         self.stubs.Set(control.ControlDaemon, 'reload', fake_reload)
 
         daemon = control.ControlDaemon('db', 'middleware', 'config')
+        daemon._reloaded = False
 
         self.assertEqual(daemon.db, 'db')
         self.assertEqual(daemon.middleware, 'middleware')
         self.assertEqual(daemon.config, 'config')
         self.assertIsInstance(daemon.pending, eventlet.semaphore.Semaphore)
+        self.assertEqual(daemon.listen_thread, None)
+        self.assertEqual(daemon._reloaded, False)
+
+    def test_start(self):
+        self.stub_spawn(True)
+
+        def fake_reload(obj):
+            obj._reloaded = True
+
+        self.stubs.Set(control.ControlDaemon, 'listen', lambda obj: 'listen')
+        self.stubs.Set(control.ControlDaemon, 'reload', fake_reload)
+
+        daemon = control.ControlDaemon('db', 'middleware', 'config')
+        daemon._reloaded = False
+        daemon.start()
+
         self.assertEqual(daemon.listen_thread, 'listen')
         self.assertEqual(daemon._reloaded, True)
 

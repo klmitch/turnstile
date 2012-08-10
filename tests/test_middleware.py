@@ -67,6 +67,11 @@ class FakeFailingRecheckMapper(FakeRecheckMapper):
         raise Exception("Fake-out")
 
 
+class FakeControlDaemon(tests.GenericFakeClass):
+    def start(self):
+        pass
+
+
 class Response(object):
     def __init__(self):
         self.status = None
@@ -216,7 +221,7 @@ class TestTurnstileMiddleware(tests.TestCase):
     def setUp(self):
         super(TestTurnstileMiddleware, self).setUp()
         self.stubs.Set(database, 'initialize', lambda cfg: cfg)
-        self.stubs.Set(control, 'ControlDaemon', tests.GenericFakeClass)
+        self.stubs.Set(control, 'ControlDaemon', FakeControlDaemon)
 
     def stub_recheck_limits(self):
         self.stubs.Set(middleware.TurnstileMiddleware, 'recheck_limits',
