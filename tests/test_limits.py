@@ -426,13 +426,13 @@ class TestLimit(tests.TestCase):
         self.assertRaises(ValueError, limit.decode, key)
 
     def test_decode_badpart(self):
-        limit=limits.Limit('db', uri='uri', value=10, unit=1)
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
         key = 'bucket:%s/a1/b=2/c=3/d=4/e=5/f=6' % limit.uuid
 
         self.assertRaises(ValueError, limit.decode, key)
 
     def test_decode_badvalue(self):
-        limit=limits.Limit('db', uri='uri', value=10, unit=1)
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
         key = 'bucket:%s/a=spam/b=2/c=3/d=4/e=5/f=6' % limit.uuid
 
         self.assertRaises(ValueError, limit.decode, key)
