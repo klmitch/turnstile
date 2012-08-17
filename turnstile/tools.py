@@ -28,28 +28,6 @@ from turnstile import limits
 from turnstile import utils
 
 
-def parse_config(conf):
-    """
-    Parses the connection configuration file.  Establishes a
-    connection to the database and returns it, along with the limits
-    key and the control channel name, as a tuple.
-
-    :param config: Name of the configuration file, for connecting to
-                   the Redis database.
-    """
-
-    # Parse the configuration
-    db_config = config.Config(conf_file=conf)
-
-    # Get the database configuration items we need
-    limits_key = db_config['control'].get('limits_key', 'limits')
-    control_channel = db_config['control'].get('channel', 'control')
-
-    # Get and return the database connection and the configuration
-    # items we need
-    return db_config.get_database(), limits_key, control_channel
-
-
 def parse_limit_node(db, idx, limit):
     """
     Given an XML node describing a limit, return a Limit object.
@@ -154,13 +132,13 @@ def parse_limit_node(db, idx, limit):
     return klass(db, **attrs)
 
 
-def _setup_limits(config, limits_file, do_reload=True,
+def _setup_limits(conf_file, limits_file, do_reload=True,
                   dry_run=False, debug=False):
     """
     Set up or update limits in the Redis database.
 
-    :param config: Name of the configuration file, for connecting to
-                   the Redis database.
+    :param conf_file: Name of the configuration file, for connecting
+                      to the Redis database.
     :param limits_file: Name of the XML file describing the limits to
                         configure.
     :param do_reload: Controls reloading behavior.  If True (the
@@ -181,7 +159,10 @@ def _setup_limits(config, limits_file, do_reload=True,
         debug = True
 
     # Connect to the database...
-    db, limits_key, control_channel = parse_config(config)
+    conf = config.Config(conf_file=conf_file)
+    db = conf.get_database()
+    limits_key = conf['control'].get('limits_key', 'limits')
+    control_channel = conf['control'].get('channel', 'control')
 
     # Parse the limits file
     limits_tree = etree.parse(limits_file)
@@ -334,12 +315,12 @@ def make_limit_node(root, limit):
             attr_node.text = str(value)
 
 
-def _dump_limits(config, limits_file, debug=False):
+def _dump_limits(conf_file, limits_file, debug=False):
     """
     Dump the current limits from the Redis database.
 
-    :param config: Name of the configuration file, for connecting to
-                   the Redis database.
+    :param conf_file: Name of the configuration file, for connecting
+                      to the Redis database.
     :param limits_file: Name of the XML file that the limits will be
                         dumped to.
     :param debug: If True, debugging messages are emitted while
@@ -347,7 +328,9 @@ def _dump_limits(config, limits_file, debug=False):
     """
 
     # Connect to the database...
-    db, limits_key, _control_channel = parse_config(config)
+    conf = config.Config(conf_file=conf_file)
+    db = conf.get_database()
+    limits_key = conf['control'].get('limits_key', 'limits')
 
     # Now, grab all the limits
     lims = [limits.Limit.hydrate(db, msgpack.loads(lim))

@@ -7,6 +7,7 @@ import argparse
 from lxml import etree
 import msgpack
 
+from turnstile import config
 from turnstile import database
 from turnstile import limits
 from turnstile import tools
@@ -598,35 +599,6 @@ class TestConsoleDumpLimits(ConsoleScriptsTestCase):
                          (('config', 'limits.xml', True), {}))
 
 
-class TestParseConfig(tests.TestCase):
-    def setUp(self):
-        super(TestParseConfig, self).setUp()
-
-        def fake_initialize(cfg):
-            return cfg
-
-        self.stubs.Set(database, 'initialize', fake_initialize)
-        self.stubs.Set(ConfigParser, 'SafeConfigParser', FakeConfigParser)
-
-    def test_basic(self):
-        result = tools.parse_config('good_config')
-
-        self.assertEqual(result,
-                         (dict(host='example.com'), 'limits', 'control'))
-
-    def test_alt_limits(self):
-        result = tools.parse_config('alt_limits')
-
-        self.assertEqual(result,
-                         (dict(host='example.com'), 'alternate', 'control'))
-
-    def test_alt_control(self):
-        result = tools.parse_config('alt_control')
-
-        self.assertEqual(result,
-                         (dict(host='example.com'), 'limits', 'alternate'))
-
-
 class BaseToolTest(tests.TestCase):
     def setUp(self):
         super(BaseToolTest, self).setUp()
@@ -634,12 +606,19 @@ class BaseToolTest(tests.TestCase):
         self.fakedb = FakeDatabase()
         self.stderr = StringIO.StringIO()
 
-        def fake_parse_config(config):
-            self.assertEqual(config, 'config.file')
+        class FakeConfig(config.Config):
+            def __init__(inst, conf_dict=None, conf_file=None):
+                inst._config = {
+                    'control': {
+                        'limits_key': 'limits',
+                        'channel': 'control',
+                        },
+                    }
 
-            return self.fakedb, 'limits', 'control'
+            def get_database(inst, override=None):
+                return self.fakedb
 
-        self.stubs.Set(tools, 'parse_config', fake_parse_config)
+        self.stubs.Set(config, 'Config', FakeConfig)
         self.stubs.Set(sys, 'stderr', self.stderr)
 
 
