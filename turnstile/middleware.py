@@ -21,6 +21,7 @@ import traceback
 import eventlet
 import routes
 
+from turnstile import config
 from turnstile import control
 from turnstile import database
 from turnstile import utils
@@ -169,40 +170,24 @@ class TurnstileMiddleware(object):
         self.mapper = None
         self.mapper_lock = eventlet.semaphore.Semaphore()
 
-        # Split up the configuration into groups of related variables
-        self.config = {
-            None: {
-                'status': '413 Request Entity Too Large',
-                },
-            }
-        for key, value in local_conf.items():
-            outer, _sep, inner = key.partition('.')
-
-            # Deal with prefix-less keys
-            if not inner:
-                outer, inner = None, outer
-
-            # Make sure we have a place to put them
-            self.config.setdefault(outer, {})
-            self.config[outer][inner] = value
+        # Save the configuration
+        self.config = config.Config(conf_dict=local_conf)
 
         # Set up request preprocessors
         self.preprocessors = []
-        for preproc in self.config[None].get('preprocess', '').split():
+        for preproc in self.config.get('preprocess', '').split():
             # Allow ImportError to bubble up
             self.preprocessors.append(utils.import_class(preproc))
 
-        # Next, let's configure redis
-        redis_args = self.config.get('redis', {})
-        self.db = database.initialize(redis_args)
+        # Next, let's get the redis database
+        self.db = self.config.get_database()
 
         # Initialize the control daemon
-        control_args = self.config.get('control', {})
-        if utils.to_bool(control_args.get('multi', 'no'), False):
+        if utils.to_bool(self.config['control'].get('multi', 'no'), False):
             control_class = control.MultiControlDaemon
         else:
             control_class = control.ControlDaemon
-        self.control_daemon = control_class(self.db, self, control_args)
+        self.control_daemon = control_class(self.db, self, self.config)
 
         # Now start the control daemon
         self.control_daemon.start()
@@ -236,7 +221,7 @@ class TurnstileMiddleware(object):
             LOG.exception("Could not load limits")
 
             # Get our error set and publish channel
-            control_args = self.config.get('control', {})
+            control_args = self.config['control']
             error_key = control_args.get('errors_key', 'errors')
             error_channel = control_args.get('errors_channel', 'errors')
 
@@ -279,7 +264,8 @@ class TurnstileMiddleware(object):
                 preproc(self, environ)
 
         # Make configuration available to the limit classes as well
-        environ['turnstile.config'] = self.config
+        environ['turnstile.config'] = self.config._config  # compat
+        environ['turnstile.conf'] = self.config
 
         # Now, if we have a mapper, run through it
         if mapper:
@@ -303,7 +289,7 @@ class TurnstileMiddleware(object):
         """
 
         # Set up the default status
-        status = self.config[None]['status']
+        status = self.config.status
 
         # Set up the retry-after header...
         headers = HeadersDict([('Retry-After', "%d" % math.ceil(delay))])

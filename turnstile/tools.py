@@ -22,12 +22,13 @@ import argparse
 from lxml import etree
 import msgpack
 
+from turnstile import config
 from turnstile import database
 from turnstile import limits
 from turnstile import utils
 
 
-def parse_config(config):
+def parse_config(conf):
     """
     Parses the connection configuration file.  Establishes a
     connection to the database and returns it, along with the limits
@@ -37,23 +38,16 @@ def parse_config(config):
                    the Redis database.
     """
 
-    # Instantiate the config parser
-    cp = ConfigParser.SafeConfigParser()
+    # Parse the configuration
+    db_config = config.Config(conf_file=conf)
 
-    # Read the limits from the file
-    cp.read(config)
+    # Get the database configuration items we need
+    limits_key = db_config['control'].get('limits_key', 'limits')
+    control_channel = db_config['control'].get('channel', 'control')
 
-    # Make sure we have a connection section
-    if not cp.has_section('connection'):
-        raise Exception("Missing [connection] section from %r" % config)
-
-    # Get the database configuration...
-    db_config = dict(cp.items('connection'))
-    limits_key = db_config.pop('limits_key', 'limits')
-    control_channel = db_config.pop('control_channel', 'control')
-
-    # Get the database connection
-    return database.initialize(db_config), limits_key, control_channel
+    # Get and return the database connection and the configuration
+    # items we need
+    return db_config.get_database(), limits_key, control_channel
 
 
 def parse_limit_node(db, idx, limit):

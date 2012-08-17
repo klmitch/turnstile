@@ -89,11 +89,15 @@ class FakeConfigParser(object):
     def __init__(self):
         self.config = None
 
-    def read(self, cfg_file):
-        self.config = self._cfg_options[cfg_file]
+    def read(self, cfg_files):
+        self.config = {}
+        for f in cfg_files:
+            for key, value in self._cfg_options[f].items():
+                self.config.setdefault(key, {})
+                self.config[key].update(value)
 
-    def has_section(self, section):
-        return section in self.config
+    def sections(self):
+        return self.config.keys()
 
     def items(self, section):
         return self.config[section].items()
@@ -621,10 +625,6 @@ class TestParseConfig(tests.TestCase):
 
         self.assertEqual(result,
                          (dict(host='example.com'), 'limits', 'alternate'))
-
-    def test_missing_connection(self):
-        with self.assertRaises(Exception):
-            result = tools.parse_config('bad_config')
 
 
 class BaseToolTest(tests.TestCase):

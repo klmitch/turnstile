@@ -246,14 +246,14 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(mid.limits, [])
         self.assertEqual(mid.limit_sum, None)
         self.assertEqual(mid.mapper, None)
-        self.assertEqual(mid.config, {
+        self.assertEqual(mid.config._config, {
                 None: dict(status='413 Request Entity Too Large'),
                 })
         self.assertEqual(mid.preprocessors, [])
         self.assertEqual(mid.db, {})
         self.assertIsInstance(mid.control_daemon, tests.GenericFakeClass)
         self.assertEqual(mid.control_daemon.__class__, FakeControlDaemon)
-        self.assertEqual(mid.control_daemon.args, (mid.db, mid, {}))
+        self.assertEqual(mid.control_daemon.args, (mid.db, mid, mid.config))
         self.assertEqual(mid.control_daemon._started, True)
 
     def test_init_config(self):
@@ -272,7 +272,7 @@ class TestTurnstileMiddleware(tests.TestCase):
 
         self.assertEqual(mid.app, 'app')
         self.assertEqual(mid.mapper, None)
-        self.assertEqual(mid.config, {
+        self.assertEqual(mid.config._config, {
                 None: dict(
                     status='404 Not Found',
                     preprocess='preproc1 preproc2 preproc3',
@@ -295,10 +295,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(mid.db, dict(host='example.com'))
         self.assertIsInstance(mid.control_daemon, tests.GenericFakeClass)
         self.assertEqual(mid.control_daemon.__class__, FakeMultiControlDaemon)
-        self.assertEqual(mid.control_daemon.args,
-                         (mid.db, mid, dict(channel='spam',
-                                            node_name='node1',
-                                            multi='on')))
+        self.assertEqual(mid.control_daemon.args, (mid.db, mid, mid.config))
         self.assertEqual(mid.control_daemon._started, True)
 
     def test_call_through(self):

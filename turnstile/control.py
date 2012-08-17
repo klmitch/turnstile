@@ -162,12 +162,12 @@ class ControlDaemon(object):
 
         # Need a pub-sub object
         kwargs = {}
-        if 'shard_hint' in self.config:
-            kwargs['shard_hint'] = self.config['shard_hint']
+        if 'shard_hint' in self.config['control']:
+            kwargs['shard_hint'] = self.config['control']['shard_hint']
         pubsub = self.db.pubsub(**kwargs)
 
         # Subscribe to the right channel(s)...
-        channel = self.config.get('channel', 'control')
+        channel = self.config['control'].get('channel', 'control')
         pubsub.subscribe(channel)
 
         # Now we listen...
@@ -233,17 +233,18 @@ class ControlDaemon(object):
 
         # Do the remaining steps in a try/finally block so we make
         # sure to release the semaphore
+        control_args = self.config['control']
         try:
             # Load all the limits
-            key = self.config.get('limits_key', 'limits')
+            key = control_args.get('limits_key', 'limits')
             self.limits.set_limits(self.db.zrange(key, 0, -1))
         except Exception:
             # Log an error
             LOG.exception("Could not load limits")
 
             # Get our error set and publish channel
-            error_key = self.config.get('errors_key', 'errors')
-            error_channel = self.config.get('errors_channel', 'errors')
+            error_key = control_args.get('errors_key', 'errors')
+            error_channel = control_args.get('errors_channel', 'errors')
 
             # Get an informative message
             msg = "Failed to load limits: " + traceback.format_exc()
@@ -442,7 +443,7 @@ def ping(daemon, channel, data=None):
         return
 
     # Get our configured node name
-    node_name = daemon.config.get('node_name')
+    node_name = daemon.config['control'].get('node_name')
 
     # Format the response
     reply = ['pong']
@@ -499,7 +500,7 @@ def reload(daemon, load_type=None, spread=None):
         # Use configured set-up; see if we have a spread
         # configured
         try:
-            spread = float(daemon.config['reload_spread'])
+            spread = float(daemon.config['control']['reload_spread'])
         except (TypeError, ValueError, KeyError):
             # No valid configuration
             spread = None
