@@ -1,4 +1,3 @@
-import ConfigParser
 import StringIO
 import sys
 import warnings
@@ -8,7 +7,6 @@ from lxml import etree
 import msgpack
 
 from turnstile import config
-from turnstile import database
 from turnstile import limits
 from turnstile import tools
 
@@ -63,45 +61,6 @@ class FakeLimit(tests.GenericFakeClass):
 
     def __repr__(self):
         return repr(self.kwargs)
-
-
-class FakeConfigParser(object):
-    _cfg_options = dict(
-        bad_config={},
-        good_config=dict(
-            connection=dict(
-                host='example.com',
-                ),
-            ),
-        alt_limits=dict(
-            connection=dict(
-                host='example.com',
-                limits_key='alternate',
-                ),
-            ),
-        alt_control=dict(
-            connection=dict(
-                host='example.com',
-                control_channel='alternate',
-                ),
-            ),
-        )
-
-    def __init__(self):
-        self.config = None
-
-    def read(self, cfg_files):
-        self.config = {}
-        for f in cfg_files:
-            for key, value in self._cfg_options[f].items():
-                self.config.setdefault(key, {})
-                self.config[key].update(value)
-
-    def sections(self):
-        return self.config.keys()
-
-    def items(self, section):
-        return self.config[section].items()
 
 
 class FakeNamespace(object):

@@ -13,8 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import ConfigParser
-import os
 import sys
 import warnings
 
@@ -23,7 +21,6 @@ from lxml import etree
 import msgpack
 
 from turnstile import config
-from turnstile import database
 from turnstile import limits
 from turnstile import utils
 

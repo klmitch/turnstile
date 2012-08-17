@@ -23,7 +23,6 @@ import routes
 
 from turnstile import config
 from turnstile import control
-from turnstile import database
 from turnstile import utils
 
 

@@ -1,5 +1,4 @@
 import ConfigParser
-import StringIO
 
 from turnstile import config
 from turnstile import database
