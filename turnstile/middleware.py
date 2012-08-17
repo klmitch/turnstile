@@ -198,8 +198,7 @@ class TurnstileMiddleware(object):
 
         # Initialize the control daemon
         control_args = self.config.get('control', {})
-        do_multi = control_args.get('multi', 'no').lower()
-        if do_multi in ('on', 'yes', 'true', '1'):
+        if utils.to_bool(control_args.get('multi', 'no'), False):
             control_class = control.MultiControlDaemon
         else:
             control_class = control.ControlDaemon

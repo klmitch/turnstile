@@ -56,10 +56,6 @@ def parse_config(config):
     return database.initialize(db_config), limits_key, control_channel
 
 
-_str_true = set(['t', 'true', 'on', 'y', 'yes'])
-_str_false = set(['f', 'false', 'off', 'n', 'no'])
-
-
 def parse_limit_node(db, idx, limit):
     """
     Given an XML node describing a limit, return a Limit object.
@@ -138,17 +134,9 @@ def parse_limit_node(db, idx, limit):
 
                 value[grandchild.get('key')] = subtype(grandchild.text)
         elif attr_type == bool:
-            # Special-case boolean arguments
-            tmp = child.text.lower()
-
-            # Is it an integer?
-            if tmp.isdigit():
-                value = bool(int(tmp))
-            elif tmp in _str_true:
-                value = True
-            elif tmp in _str_false:
-                value = False
-            else:
+            try:
+                value = utils.to_bool(child.text)
+            except ValueError:
                 warnings.warn("Unrecognized boolean value %r while parsing "
                               "%r attribute of limit at index %d; "
                               "ignoring..." % (child.text, attr, idx))
