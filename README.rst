@@ -13,7 +13,7 @@ Installing Turnstile
 ====================
 
 Turnstile can be easily installed like many Python packages, using
-`PIP`_:: 
+`PIP`_::
 
  pip install turnstile
 
