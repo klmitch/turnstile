@@ -1,6 +1,7 @@
 import hashlib
 from multiprocessing import managers
 import random
+import warnings
 
 import eventlet
 import msgpack
@@ -30,6 +31,23 @@ class FakeMiddleware(object):
     @property
     def db(self):
         return self.config.get_database()
+
+
+class FakeManager(object):
+    def __init__(self):
+        self._called = []
+
+    def connect(self):
+        self._called.append(('connect',))
+
+    def get_server(self):
+        self._called.append(('get_server',))
+
+        class FakeServer(object):
+            def serve_forever(inst):
+                self._called.append(('serve_forever',))
+
+        return FakeServer()
 
 
 class ControlDaemonTest(control.ControlDaemon):
@@ -744,26 +762,113 @@ class TestRemoteLimitData(tests.TestCase):
 
 class TestMultiControlDaemon(tests.TestCase):
     def test_init(self):
-        daemon = control.MultiControlDaemon(FakeMiddleware(), 'config')
+        conf = FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                'multi.authkey': 'fakeauth',
+                })
+        daemon = control.MultiControlDaemon(FakeMiddleware(conf), conf)
 
         self.assertIsInstance(daemon.manager, managers.BaseManager)
         self.assertIsInstance(daemon.remote, control.RemoteLimitData)
         self.assertEqual(daemon.remote._manager, daemon.manager)
+        self.assertEqual(daemon.manager.address, ('127.0.0.1', 5779))
+        self.assertEqual(daemon.manager._authkey, 'fakeauth')
+
+    def test_init_nohost(self):
+        conf = FakeConfig({
+                'multi.port': '5779',
+                'multi.authkey': 'fakeauth',
+                })
+        with warnings.catch_warnings(record=True) as w:
+            self.assertRaises(ValueError,
+                              control.MultiControlDaemon,
+                              FakeMiddleware(conf), conf)
+            self.assertIn("Missing value for configuration key "
+                          "'control.multi.host'", w[-1].message)
+
+    def test_init_noport(self):
+        conf = FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.authkey': 'fakeauth',
+                })
+        with warnings.catch_warnings(record=True) as w:
+            self.assertRaises(ValueError,
+                              control.MultiControlDaemon,
+                              FakeMiddleware(conf), conf)
+            self.assertIn("Missing value for configuration key "
+                          "'control.multi.port'", w[-1].message)
+
+    def test_init_badport(self):
+        conf = FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': 'badport',
+                'multi.authkey': 'fakeauth',
+                })
+        with warnings.catch_warnings(record=True) as w:
+            self.assertRaises(ValueError,
+                              control.MultiControlDaemon,
+                              FakeMiddleware(conf), conf)
+            self.assertIn("Invalid port value 'badport'", w[-1].message)
+
+    def test_init_noauth(self):
+        conf = FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                })
+        with warnings.catch_warnings(record=True) as w:
+            self.assertRaises(ValueError,
+                              control.MultiControlDaemon,
+                              FakeMiddleware(conf), conf)
+            self.assertIn("Missing value for configuration key "
+                          "'control.multi.authkey'", w[-1].message)
 
     def test_get_limits(self):
-        daemon = control.MultiControlDaemon(FakeMiddleware(), 'config')
+        conf = FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                'multi.authkey': 'fakeauth',
+                })
+        daemon = control.MultiControlDaemon(FakeMiddleware(conf), conf)
         result = daemon.get_limits()
 
         self.assertEqual(result, daemon.remote)
 
     def test_start(self):
-        daemon = control.MultiControlDaemon(FakeMiddleware(), 'config')
-        super_start = super(control.MultiControlDaemon, daemon).start
+        conf = FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                'multi.authkey': 'fakeauth',
+                })
+        daemon = control.MultiControlDaemon(FakeMiddleware(conf), conf)
+        manager = FakeManager()
+        daemon.manager = manager
 
-        class FakeManager(object):
-            def start(manager, init, initargs=None):
-                self.assertEqual(init, super_start)
-                self.assertEqual(initargs, None)
-
-        daemon.manager = FakeManager()
         daemon.start()
+
+        self.assertEqual(manager._called, [('connect',)])
+
+    def test_serve(self):
+        self.started = False
+
+        def fake_start(inst):
+            self.started = True
+
+        self.stubs.Set(control.ControlDaemon, 'start', fake_start)
+
+        conf = FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                'multi.authkey': 'fakeauth',
+                })
+        daemon = control.MultiControlDaemon(FakeMiddleware(conf), conf)
+        manager = FakeManager()
+        daemon.manager = manager
+
+        daemon.serve()
+
+        self.assertEqual(self.started, True)
+        self.assertEqual(manager._called, [
+                ('get_server',),
+                ('serve_forever',),
+                ])

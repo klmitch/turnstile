@@ -18,6 +18,7 @@ import logging
 from multiprocessing import managers
 import random
 import traceback
+import warnings
 
 import eventlet
 import msgpack
@@ -386,6 +387,33 @@ class MultiControlDaemon(ControlDaemon):
         listening thread and triggers an immediate reload.
         """
 
+        # Grab required configuration values
+        required = set(['multi.host', 'multi.port', 'multi.authkey'])
+        values = {}
+        for conf_key in list(required):
+            key = conf_key[6:]
+            try:
+                if key == 'port':
+                    values[key] = int(conf['control'][conf_key])
+                else:
+                    values[key] = conf['control'][conf_key]
+            except KeyError:
+                warnings.warn("Missing value for configuration key "
+                              "'control.%s'" % conf_key)
+            except ValueError:
+                warnings.warn("Invalid port value %r" %
+                              conf['control'][conf_key])
+            else:
+                required.discard(conf_key)
+
+        # Error out if we're missing something critical
+        if required:
+            raise ValueError("Missing required configuration for "
+                             "MultiControlDaemon.  Missing or invalid "
+                             "configuration keys: %s" %
+                             ', '.join(['control.%s' % k for k in
+                                        sorted(required)]))
+
         super(MultiControlDaemon, self).__init__(middleware, conf)
 
         # Build a LimitManager
@@ -398,7 +426,8 @@ class MultiControlDaemon(ControlDaemon):
                               AcquirerProxy)
 
         # Prepare the manager and the remote limit data
-        self.manager = LimitManager()
+        self.manager = LimitManager((values['host'], values['port']),
+                                    values['authkey'])
         self.remote = RemoteLimitData(self.manager)
 
     def get_limits(self):
@@ -413,12 +442,25 @@ class MultiControlDaemon(ControlDaemon):
 
     def start(self):
         """
-        Starts the MultiControlDaemon by launching the Manager process
-        and directing it to launch the listening thread and trigger
-        the initial limits load.
+        Starts the MultiControlDaemon by connecting to the running
+        control daemon process.  If the control daemon process is not
+        currently running, a socket error will be raised.
         """
 
-        self.manager.start(super(MultiControlDaemon, self).start)
+        self.manager.connect()
+
+    def serve(self):
+        """
+        Starts the MultiControlDaemon process.  Forks a thread for
+        listening to the Redis database, then initializes and starts
+        the Manager.
+        """
+
+        # Start the listening thread and load the limits
+        super(MultiControlDaemon, self).start()
+
+        # Start the manager in this thread
+        self.manager.get_server().serve_forever()
 
     @property
     def db(self):
