@@ -170,23 +170,23 @@ class TurnstileMiddleware(object):
         self.mapper_lock = eventlet.semaphore.Semaphore()
 
         # Save the configuration
-        self.config = config.Config(conf_dict=local_conf)
+        self.conf = config.Config(conf_dict=local_conf)
 
         # We will lazy-load the database
         self._db = None
 
         # Set up request preprocessors
         self.preprocessors = []
-        for preproc in self.config.get('preprocess', '').split():
+        for preproc in self.conf.get('preprocess', '').split():
             # Allow ImportError to bubble up
             self.preprocessors.append(utils.import_class(preproc))
 
         # Initialize the control daemon
-        if config.Config.to_bool(self.config['control'].get('multi', 'no'),
+        if config.Config.to_bool(self.conf['control'].get('multi', 'no'),
                                  False):
-            self.control_daemon = control.MultiControlDaemon(self, self.config)
+            self.control_daemon = control.MultiControlDaemon(self, self.conf)
         else:
-            self.control_daemon = control.ControlDaemon(self, self.config)
+            self.control_daemon = control.ControlDaemon(self, self.conf)
 
         # Now start the control daemon
         self.control_daemon.start()
@@ -220,7 +220,7 @@ class TurnstileMiddleware(object):
             LOG.exception("Could not load limits")
 
             # Get our error set and publish channel
-            control_args = self.config['control']
+            control_args = self.conf['control']
             error_key = control_args.get('errors_key', 'errors')
             error_channel = control_args.get('errors_channel', 'errors')
 
@@ -263,8 +263,8 @@ class TurnstileMiddleware(object):
                 preproc(self, environ)
 
         # Make configuration available to the limit classes as well
-        environ['turnstile.config'] = self.config._config  # compat
-        environ['turnstile.conf'] = self.config
+        environ['turnstile.config'] = self.config  # compat
+        environ['turnstile.conf'] = self.conf
 
         # Now, if we have a mapper, run through it
         if mapper:
@@ -288,7 +288,7 @@ class TurnstileMiddleware(object):
         """
 
         # Set up the default status
-        status = self.config.status
+        status = self.conf.status
 
         # Set up the retry-after header...
         headers = HeadersDict([('Retry-After', "%d" % math.ceil(delay))])
@@ -302,6 +302,15 @@ class TurnstileMiddleware(object):
         return entity
 
     @property
+    def config(self):
+        """
+        Obtain the configuration as a multi-level dictionary.
+        Provided for backwards compatibility.
+        """
+
+        return self.conf._config
+
+    @property
     def db(self):
         """
         Obtain a handle for the database.  This allows lazy
@@ -310,6 +319,6 @@ class TurnstileMiddleware(object):
 
         # Initialize the database handle
         if not self._db:
-            self._db = self.config.get_database()
+            self._db = self.conf.get_database()
 
         return self._db
