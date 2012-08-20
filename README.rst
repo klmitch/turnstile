@@ -52,6 +52,30 @@ Turnstile configuration would be::
 
 The following are the recognized configuration options:
 
+config
+  Allows specification of an alternate configuration file.  This can
+  be used to generate a single file which can be shared by WSGI
+  servers using the Turnstile middleware and the various provided
+  tools.  This can also allow for separation of code-related options,
+  such as the ``preprocess`` option, from pure configuration, such as
+  the ``redis.host`` option.  The configuration file is an
+  INI-formatted file, with section names corresponding to the first
+  segment of the configuration option name.  That is, the
+  ``redis.host`` option would be set as follows::
+
+    [redis]
+    host = <your Redis database host name or IP>
+
+  Configuration options which have no prefix are grouped under the
+  ``[turnstile]`` section of the file, as follows::
+
+    [turnstile]
+    status = 404 Not Found
+
+  Note that specifying the ``config`` option in the ``[turnstile]``
+  section will have no effect; it is not possible to cause another
+  configuration file to be included in this way.
+
 control.channel
   Specifies the channel that the control daemon listens on.  (See
   below for more information about the purpose of the control daemon.)
@@ -74,7 +98,24 @@ control.limits_key
 control.multi
   If set to "on", "yes", "true", or "1", the control daemon will run
   in a separate process.  This enables Turnstile to be compatible with
-  WSGI servers which use multiple worker processes.
+  WSGI servers which use multiple worker processes.  Note that the
+  configuration values ``control.multi.authkey``,
+  ``control.multi.host``, and ``control.multi.port`` are required.
+
+control.multi.authkey
+  Set to an authentication key, for use when multiprocess Turnstile is
+  enabled.  Must be the value used by the invocation of
+  ``multi_daemon``.
+
+control.multi.host
+  Set to a host name or IP address, for use when multiprocess
+  Turnstile is enabled.  Must be the value used by the invocation of
+  ``multi_daemon``.
+
+control.multi.port
+  Set to a port number, for use when multiprocess Turnstile is
+  enabled.  Must be the value used by the invocation of
+  ``multi_daemon``.
 
 control.node_name
   The name of the node.  If provided, this option allows the
@@ -191,6 +232,15 @@ daemon."  The control daemon uses the publish/subscribe support
 provided by Redis to listen for commands, of which two are currently
 recognized: ping and reload.
 
+Some WSGI servers cannot use Turnstile in this mode, due to using
+multiple processes (typically through use of the "multiprocessing"
+Python module).  In these circumstances, the control daemon may be
+started in its own process (see the ``multi_daemon`` tool).  Enabling
+this requires that the ``control.multi`` configuration option be
+turned on, and values provided for ``control.multi.authkey``,
+``control.multi.host``, and ``control.multi.port``.  See the
+documentation for these options for more information.
+
 The Ping Command
 ----------------
 
@@ -270,6 +320,30 @@ A usage summary for ``dump_limits``::
     -h, --help   show this help message and exit
     --debug, -d  Run the tool in debug mode.
 
+The ``multi_daemon`` Tool
+-------------------------
+
+The ``multi_daemon`` tool may be used to start a separate control
+daemon process.  This tool requires the name of an INI-style
+configuration file; see the section on configuring the tools below for
+more information.  Note that, in addition to the required Redis
+configuration values, configuration values for the
+``control.multi.authkey``, ``control.multi.host``, and
+``control.multi.port`` options must be provided.
+
+A usage summary for ``multi_daemon``::
+
+  usage: multi_daemon [-h] [--debug] config
+
+  Run the external control daemon.
+
+  positional arguments:
+    config       Name of the configuration file.
+
+  optional arguments:
+    -h, --help   show this help message and exit
+    --debug, -d  Run the tool in debug mode.
+
 The ``setup_limits`` Tool
 -------------------------
 
@@ -312,15 +386,20 @@ Configuring the Tools
 
 Both ``dump_limits`` and ``setup_limits`` require an INI-style
 configuration file, which specifies how to connect to the Redis
-database.  This file should contain the section "[connection]" and
+database.  This file should contain the section "[redis]" and
 should be populated with the same "redis.*" options as the PasteDeploy
 configuration file, minus the "redis." prefix.  For example::
 
-    [connection]
+    [redis]
     host = <your Redis database host name or IP>
 
 Each "redis.*" option recognized by the Turnstile middleware is
 understood by the tools.
+
+Additional options may be provided, such as the control channel,
+limits key, and the ``multi_daemon`` options.  The configuration file
+should be compatible with the alternate configuration file described
+under the ``config`` configuration option.
 
 Rate Limit XML
 --------------
@@ -393,22 +472,22 @@ middleware object (the first passed parameter) via the 'config'
 attribute.  (The database handle is also available via the 'db'
 attribute, should access to the database be required.)  For the
 ``filter()`` method of the Limit classes, the configuration is
-available in the request environment under the "turnstile.config" key.
+available in the request environment under the "turnstile.conf" key.
 
-The Turnstile configuration is represented as a two-level dictionary.
-Configuration keys that do not contain a '.' are available in the
-dictionary accessible via the key 'None' in the base configuration.
-For example, to obtain the configured status value, assuming the
-Turnstile configuration is available in the "config" variable, the
-correct code would be::
+The Turnstile configuration is represented as a
+``turnstile.config:Config`` object.  Configuration keys that do not
+contain a '.' are available as attributes of this object; for example,
+to obtain the configured status value, assuming the Turnstile
+configuration is available in the "config" variable, the correct code
+would be::
 
-    status = config[None]['status']
+    status = config.status
 
 For those configuration keys which do contain a '.', the part of the
-name to the left of the first '.' becomes the first key, and the
-remainder of the name is the second key.  For example, to access the
-value of the "redis.connection_pool.connection_class" variable, the
-correct code would be::
+name to the left of the first '.' becomes a dictionary key, and the
+remainder of the name will be a second key.  For example, to access
+the value of the "redis.connection_pool.connection_class" variable,
+the correct code would be::
 
     connection_class = config['redis']['connection_pool.connection_class']
 
@@ -416,5 +495,16 @@ All values in the configuration are stored as strings.  Configuration
 values do not need to be pre-declared in any way; Turnstile ignores
 (but maintains) configuration values that it does not use, making
 these values available for use by preprocessors and Limit classes.
+
+For convenience, the ``turnstile.config:Config`` class offers a static
+method ``to_bool()`` which can convert a string value to a boolean
+value.  The strings "t", "true", "on", "y", and "yes" are all
+recognized as a boolean True value, as are numeric strings which
+evaluate to non-zero values.  The strings "f", "false", "off", "n",
+and "no" are all recognized as a boolean False value, as are numeric
+strings which evaluate to zero values.  Any other string value will
+cause ``to_bool()`` to raise a ValueError, unless the ``do_raise``
+argument is given as False, in which case ``to_bool()`` will return a
+boolean False value.
 
 .. _PIP link: http://www.pip-installer.org/en/latest/index.html
