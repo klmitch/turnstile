@@ -105,7 +105,7 @@ def parse_limit_node(db, idx, limit):
                 value[grandchild.get('key')] = subtype(grandchild.text)
         elif attr_type == bool:
             try:
-                value = utils.to_bool(child.text)
+                value = config.Config.to_bool(child.text)
             except ValueError:
                 warnings.warn("Unrecognized boolean value %r while parsing "
                               "%r attribute of limit at index %d; "

@@ -182,7 +182,8 @@ class TurnstileMiddleware(object):
             self.preprocessors.append(utils.import_class(preproc))
 
         # Initialize the control daemon
-        if utils.to_bool(self.config['control'].get('multi', 'no'), False):
+        if config.Config.to_bool(self.config['control'].get('multi', 'no'),
+                                 False):
             self.control_daemon = control.MultiControlDaemon(self, self.config)
         else:
             self.control_daemon = control.ControlDaemon(self, self.config)

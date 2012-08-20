@@ -18,6 +18,10 @@ import ConfigParser
 from turnstile import database
 
 
+_str_true = set(['t', 'true', 'on', 'y', 'yes'])
+_str_false = set(['f', 'false', 'off', 'n', 'no'])
+
+
 class Config(object):
     """
     Stores configuration data.  Configuration can be loaded from the
@@ -233,3 +237,32 @@ class Config(object):
 
         # Return the redis database connection
         return database.initialize(redis_args)
+
+    @staticmethod
+    def to_bool(value, do_raise=True):
+        """Convert a string to a boolean value.
+
+        If the string consists of digits, the integer value of the string
+        is coerced to a boolean value.  Otherwise, any of the strings "t",
+        "true", "on", "y", and "yes" are considered True and any of the
+        strings "f", "false", "off", "n", and "no" are considered False.
+        A ValueError will be raised for any other value.
+        """
+
+        value = value.lower()
+
+        # Try it as an integer
+        if value.isdigit():
+            return bool(int(value))
+
+        # OK, check it against the true/false values...
+        if value in _str_true:
+            return True
+        elif value in _str_false:
+            return False
+
+        # Not recognized
+        if do_raise:
+            raise ValueError("invalid literal for to_bool(): %r" % value)
+
+        return False

@@ -277,3 +277,28 @@ class TestConfig(tests.TestCase):
                 'host': '127.0.0.1',
                 'password': 'foobar',
                 })
+
+    def test_to_bool_integers(self):
+        self.assertEqual(config.Config.to_bool('0'), False)
+        self.assertEqual(config.Config.to_bool('1'), True)
+        self.assertEqual(config.Config.to_bool('123412341234'), True)
+
+    def test_to_bool_true(self):
+        self.assertEqual(config.Config.to_bool('t'), True)
+        self.assertEqual(config.Config.to_bool('true'), True)
+        self.assertEqual(config.Config.to_bool('on'), True)
+        self.assertEqual(config.Config.to_bool('y'), True)
+        self.assertEqual(config.Config.to_bool('yes'), True)
+
+    def test_to_bool_false(self):
+        self.assertEqual(config.Config.to_bool('f'), False)
+        self.assertEqual(config.Config.to_bool('false'), False)
+        self.assertEqual(config.Config.to_bool('off'), False)
+        self.assertEqual(config.Config.to_bool('n'), False)
+        self.assertEqual(config.Config.to_bool('no'), False)
+
+    def test_to_bool_invalid(self):
+        self.assertRaises(ValueError, config.Config.to_bool, 'invalid')
+
+    def test_to_bool_invalid_noraise(self):
+        self.assertEqual(config.Config.to_bool('invalid', False), False)
