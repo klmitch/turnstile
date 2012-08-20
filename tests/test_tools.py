@@ -7,6 +7,7 @@ from lxml import etree
 import msgpack
 
 from turnstile import config
+from turnstile import control
 from turnstile import limits
 from turnstile import tools
 
@@ -558,6 +559,34 @@ class TestConsoleDumpLimits(ConsoleScriptsTestCase):
                          (('config', 'limits.xml', True), {}))
 
 
+class TestConsoleMultiDaemon(ConsoleScriptsTestCase):
+    subroutine = staticmethod(tools.multi_daemon)
+
+    def test_basic(self):
+        self.stub_argparse()
+        res = self.subroutine()
+
+        self.assertEqual(res, None)
+        self.assertEqual(self.subargs, (('config',), {}))
+
+    def test_exception(self):
+        self.stub_argparse()
+        self.result = Exception("An error occurred")
+        res = self.subroutine()
+
+        self.assertEqual(res, "An error occurred")
+        self.assertEqual(self.subargs, (('config',), {}))
+
+    def test_exception_debug(self):
+        self.stub_argparse(True)
+        self.result = Exception("An error occurred")
+
+        with self.assertRaises(Exception):
+            res = self.subroutine()
+
+        self.assertEqual(self.subargs, (('config',), {}))
+
+
 class BaseToolTest(tests.TestCase):
     def setUp(self):
         super(BaseToolTest, self).setUp()
@@ -818,3 +847,31 @@ class TestToolDumpLimits(BaseToolTest):
 Dumping limit index 1: {'name': 'limit2'}
 Dumping limit index 2: {'name': 'limit3'}
 Dumping limits to file """))
+
+
+class TestToolMultiDaemon(BaseToolTest):
+    def setUp(self):
+        super(TestToolMultiDaemon, self).setUp()
+
+        self.served = False
+        self.daemon = None
+
+        class FakeMultiControlDaemon(tests.GenericFakeClass):
+            def __init__(inst, *args, **kwargs):
+                super(FakeMultiControlDaemon, inst).__init__(*args, **kwargs)
+                self.daemon = inst
+
+            def serve(inst):
+                self.served = True
+
+        self.stubs.Set(control, 'MultiControlDaemon', FakeMultiControlDaemon)
+
+    def test_basic(self):
+        with warnings.catch_warnings(record=True) as w:
+            tools._multi_daemon('config.file')
+
+            self.assertEqual(len(w), 0)
+
+        self.assertEqual(self.served, True)
+        self.assertEqual(self.daemon.args[0], None)
+        self.assertIsInstance(self.daemon.args[1], config.Config)

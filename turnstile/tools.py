@@ -21,6 +21,7 @@ from lxml import etree
 import msgpack
 
 from turnstile import config
+from turnstile import control
 from turnstile import limits
 from turnstile import utils
 
@@ -372,6 +373,45 @@ def dump_limits():
     args = parser.parse_args()
     try:
         _dump_limits(args.config, args.limits_file, args.debug)
+    except Exception as exc:
+        if args.debug:
+            raise
+        return str(exc)
+
+
+def _multi_daemon(conf_file):
+    """
+    Run the external control daemon as configured.
+
+    :param conf_file: Name of the configuration file.
+    """
+
+    conf = config.Config(conf_file=conf_file)
+    daemon = control.MultiControlDaemon(None, conf)
+    daemon.serve()
+
+
+def multi_daemon():
+    """
+    Console script entry point for running the external control
+    daemon.
+    """
+
+    parser = argparse.ArgumentParser(
+        description="Run the external control daemon.",
+        )
+
+    parser.add_argument('config',
+                        help="Name of the configuration file.")
+    parser.add_argument('--debug', '-d',
+                        dest='debug',
+                        action='store_true',
+                        default=False,
+                        help="Run the tool in debug mode.")
+
+    args = parser.parse_args()
+    try:
+        _multi_daemon(args.config)
     except Exception as exc:
         if args.debug:
             raise
