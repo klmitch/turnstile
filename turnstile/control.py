@@ -119,16 +119,16 @@ class ControlDaemon(object):
 
         cls._commands[name] = func
 
-    def __init__(self, db, middleware, config):
+    def __init__(self, middleware, conf):
         """
         Initialize the ControlDaemon.  Starts the listening thread and
         triggers an immediate reload.
         """
 
         # Save some relevant information
-        self.db = db
+        self._db = None
         self.middleware = middleware
-        self.config = config
+        self.config = conf
         self.limits = LimitData()
 
         # Need a semaphore to cover reloads in action
@@ -160,11 +160,16 @@ class ControlDaemon(object):
         ('control' by default).
         """
 
+        # Use a specific database handle, with override.  This allows
+        # the long-lived listen thread to be configured to use a
+        # different database or different database options.
+        db = self.config.get_database('control')
+
         # Need a pub-sub object
         kwargs = {}
         if 'shard_hint' in self.config['control']:
             kwargs['shard_hint'] = self.config['control']['shard_hint']
-        pubsub = self.db.pubsub(**kwargs)
+        pubsub = db.pubsub(**kwargs)
 
         # Subscribe to the right channel(s)...
         channel = self.config['control'].get('channel', 'control')
@@ -261,6 +266,20 @@ class ControlDaemon(object):
                 self.db.publish(error_channel, msg)
         finally:
             self.pending.release()
+
+    @property
+    def db(self):
+        """
+        Obtain a handle for the database.  This allows lazy
+        initialization of the database handle.
+        """
+
+        # Initialize the database handle from the middleware's copy of
+        # it
+        if not self._db:
+            self._db = self.middleware.db
+
+        return self._db
 
 
 class RemoteLimitData(LimitData):
@@ -361,13 +380,13 @@ class MultiControlDaemon(ControlDaemon):
     enable access to the limit data from multiple processes.
     """
 
-    def __init__(self, db, middleware, config):
+    def __init__(self, middleware, conf):
         """
         Initialize the MultiControlDaemon.  Starts the Manager and the
         listening thread and triggers an immediate reload.
         """
 
-        super(MultiControlDaemon, self).__init__(db, middleware, config)
+        super(MultiControlDaemon, self).__init__(middleware, conf)
 
         # Build a LimitManager
         class LimitManager(managers.BaseManager):
@@ -400,6 +419,20 @@ class MultiControlDaemon(ControlDaemon):
         """
 
         self.manager.start(super(MultiControlDaemon, self).start)
+
+    @property
+    def db(self):
+        """
+        Obtain a handle for the database.  This allows lazy
+        initialization of the database handle.
+        """
+
+        # Initialize the database handle; we're running in a separate
+        # process, so we need to get_database() ourself
+        if not self._db:
+            self._db = self.config.get_database()
+
+        return self._db
 
 
 def register(name, func=None):

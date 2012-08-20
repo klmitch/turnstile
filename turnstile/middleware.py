@@ -172,21 +172,20 @@ class TurnstileMiddleware(object):
         # Save the configuration
         self.config = config.Config(conf_dict=local_conf)
 
+        # We will lazy-load the database
+        self._db = None
+
         # Set up request preprocessors
         self.preprocessors = []
         for preproc in self.config.get('preprocess', '').split():
             # Allow ImportError to bubble up
             self.preprocessors.append(utils.import_class(preproc))
 
-        # Next, let's get the redis database
-        self.db = self.config.get_database()
-
         # Initialize the control daemon
         if utils.to_bool(self.config['control'].get('multi', 'no'), False):
-            control_class = control.MultiControlDaemon
+            self.control_daemon = control.MultiControlDaemon(self, self.config)
         else:
-            control_class = control.ControlDaemon
-        self.control_daemon = control_class(self.db, self, self.config)
+            self.control_daemon = control.ControlDaemon(self, self.config)
 
         # Now start the control daemon
         self.control_daemon.start()
@@ -300,3 +299,16 @@ class TurnstileMiddleware(object):
         # Return the response
         start_response(status, headers.items())
         return entity
+
+    @property
+    def db(self):
+        """
+        Obtain a handle for the database.  This allows lazy
+        initialization of the database handle.
+        """
+
+        # Initialize the database handle
+        if not self._db:
+            self._db = self.config.get_database()
+
+        return self._db

@@ -253,7 +253,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(mid.db, {})
         self.assertIsInstance(mid.control_daemon, tests.GenericFakeClass)
         self.assertEqual(mid.control_daemon.__class__, FakeControlDaemon)
-        self.assertEqual(mid.control_daemon.args, (mid.db, mid, mid.config))
+        self.assertEqual(mid.control_daemon.args, (mid, mid.config))
         self.assertEqual(mid.control_daemon._started, True)
 
     def test_init_config(self):
@@ -295,7 +295,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(mid.db, dict(host='example.com'))
         self.assertIsInstance(mid.control_daemon, tests.GenericFakeClass)
         self.assertEqual(mid.control_daemon.__class__, FakeMultiControlDaemon)
-        self.assertEqual(mid.control_daemon.args, (mid.db, mid, mid.config))
+        self.assertEqual(mid.control_daemon.args, (mid, mid.config))
         self.assertEqual(mid.control_daemon._started, True)
 
     def test_call_through(self):
@@ -435,7 +435,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         db = db_fixture.FakeDatabase()
         ld = db_fixture.FakeLimitData()
         mid = middleware.TurnstileMiddleware('app', {})
-        mid.db = db
+        mid._db = db
         mid.control_daemon.get_limits = lambda: ld
         mid.limits = None  # Check that these get updated
         mid.mapper = None
@@ -454,7 +454,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         ld = db_fixture.FakeLimitData([dict(limit='limit1'),
                                        dict(limit='limit2')])
         mid = middleware.TurnstileMiddleware('app', {})
-        mid.db = db
+        mid._db = db
         mid.control_daemon.get_limits = lambda: ld
         mid.limits = None  # Check that these get updated
         mid.mapper = None
@@ -481,7 +481,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         ld = db_fixture.FakeLimitData([dict(limit='limit1'),
                                        dict(limit='limit2')])
         mid = middleware.TurnstileMiddleware('app', {})
-        mid.db = db
+        mid._db = db
         mid.control_daemon.get_limits = lambda: ld
         mid.limits = None  # Check that these don't get updated
         mid.mapper = None
@@ -500,7 +500,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         db._fakedb['errors'] = set()
         ld = db_fixture.FakeLimitData()
         mid = middleware.TurnstileMiddleware('app', {})
-        mid.db = db
+        mid._db = db
         mid.control_daemon.get_limits = lambda: ld
         mid.limits = None  # Check that these don't get updated
         mid.mapper = None
@@ -531,7 +531,7 @@ class TestTurnstileMiddleware(tests.TestCase):
                 'control.errors_key': 'errors_set',
                 'control.errors_channel': 'errors_channel',
                 })
-        mid.db = db
+        mid._db = db
         mid.control_daemon.get_limits = lambda: ld
         mid.limits = None  # Check that these don't get updated
         mid.mapper = None
