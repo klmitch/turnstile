@@ -191,6 +191,9 @@ class TurnstileMiddleware(object):
         # Now start the control daemon
         self.control_daemon.start()
 
+        # Emit a log message to indicate that we're running
+        LOG.info("Turnstile middleware initialized")
+
     def recheck_limits(self):
         """
         Re-check that the cached limits are the current limits.
