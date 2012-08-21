@@ -47,7 +47,7 @@ the ``preprocess`` configuration variable.  The simplest example of
 Turnstile configuration would be::
 
     [filter:turnstile]
-    paste.filter_factory = turnstile.middleware:turnstile_filter
+    use = egg:turnstile#turnstile
     redis.host = <your Redis database host name or IP>
 
 The following are the recognized configuration options:
