@@ -17,6 +17,7 @@ import sys
 import warnings
 
 import argparse
+import eventlet
 from lxml import etree
 import msgpack
 
@@ -386,6 +387,7 @@ def _multi_daemon(conf_file):
     :param conf_file: Name of the configuration file.
     """
 
+    eventlet.monkey_patch()
     conf = config.Config(conf_file=conf_file)
     daemon = control.MultiControlDaemon(None, conf)
     daemon.serve()
