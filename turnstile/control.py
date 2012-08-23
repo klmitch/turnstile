@@ -97,6 +97,10 @@ class LimitData(object):
             if limit_sum and self.limit_sum == limit_sum:
                 raise NoChangeException()
 
+            # Allow returning just the list of strings
+            if not db:
+                return (self.limit_sum, self.limit_data)
+
             # Return a tuple of the limits and limit sum
             lims = [limits.Limit.hydrate(db, msgpack.loads(lim))
                     for lim in self.limit_data]
