@@ -16,6 +16,7 @@
 import msgpack
 import redis
 
+from turnstile import limits
 from turnstile import utils
 
 
@@ -231,3 +232,15 @@ def initialize(config):
 
     # Build and return the database
     return TurnstileRedis(**kwargs)
+
+
+def limits_hydrate(db, lims):
+    """
+    Helper function to hydrate a list of limits.
+
+    :param db: A database handle.
+    :param lims: A list of limit strings, as retrieved from the
+                 database.
+    """
+
+    return [limits.Limit.hydrate(db, msgpack.loads(lim)) for lim in lims]

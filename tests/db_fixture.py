@@ -155,8 +155,7 @@ class FakeLimitData(object):
         self.limit_data = limits[:]
         self.limit_sum = len(limits)
 
-    def get_limits(self, db, limit_sum=None):
+    def get_limits(self, limit_sum=None):
         if limit_sum and self.limit_sum == limit_sum:
             raise control.NoChangeException()
-        lims = [FakeLimit.hydrate(db, lim) for lim in self.limit_data]
-        return (self.limit_sum, lims)
+        return (self.limit_sum, self.limit_data)

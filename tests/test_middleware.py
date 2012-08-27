@@ -3,6 +3,7 @@ import routes
 from turnstile import control
 from turnstile import database
 from turnstile import middleware
+from turnstile import remote
 
 import tests
 from tests import db_fixture
@@ -76,7 +77,7 @@ class FakeControlDaemon(tests.GenericFakeClass):
         self._started = True
 
 
-class FakeMultiControlDaemon(FakeControlDaemon):
+class FakeRemoteControlDaemon(FakeControlDaemon):
     pass
 
 
@@ -228,9 +229,14 @@ class TestTurnstileMiddleware(tests.TestCase):
 
     def setUp(self):
         super(TestTurnstileMiddleware, self).setUp()
+
+        def fake_limits_hydrate(db, lims):
+            return [db_fixture.FakeLimit.hydrate(db, lim) for lim in lims]
+
         self.stubs.Set(database, 'initialize', lambda cfg: cfg)
         self.stubs.Set(control, 'ControlDaemon', FakeControlDaemon)
-        self.stubs.Set(control, 'MultiControlDaemon', FakeMultiControlDaemon)
+        self.stubs.Set(remote, 'RemoteControlDaemon', FakeRemoteControlDaemon)
+        self.stubs.Set(database, 'limits_hydrate', fake_limits_hydrate)
 
     def stub_recheck_limits(self):
         self.stubs.Set(middleware.TurnstileMiddleware, 'recheck_limits',
@@ -294,7 +300,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(mid.preprocessors, [preproc1, preproc2, preproc3])
         self.assertEqual(mid.db, dict(host='example.com'))
         self.assertIsInstance(mid.control_daemon, tests.GenericFakeClass)
-        self.assertEqual(mid.control_daemon.__class__, FakeMultiControlDaemon)
+        self.assertEqual(mid.control_daemon.__class__, FakeRemoteControlDaemon)
         self.assertEqual(mid.control_daemon.args, (mid, mid.conf))
         self.assertEqual(mid.control_daemon._started, True)
 
@@ -491,7 +497,7 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(mid.limits, None)
         self.assertEqual(mid.limit_sum, 2)
         self.assertEqual(mid.mapper, None)
-        self.assertEqual(len(self.log_messages), 0)
+        self.assertEqual(len(self.log_messages), 1)
 
     def test_recheck_limits_failure(self):
         self.stub_mapper(FakeFailingRecheckMapper)
@@ -509,8 +515,8 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(mid.limits, None)
         self.assertEqual(mid.limit_sum, None)
         self.assertEqual(mid.mapper, None)
-        self.assertEqual(len(self.log_messages), 1)
-        self.assertTrue(self.log_messages[0].startswith(
+        self.assertEqual(len(self.log_messages), 2)
+        self.assertTrue(self.log_messages[1].startswith(
                 'Could not load limits'))
         self.assertEqual(db._actions[0][0], 'sadd')
         self.assertEqual(db._actions[0][1], 'errors')
@@ -540,8 +546,8 @@ class TestTurnstileMiddleware(tests.TestCase):
         self.assertEqual(mid.limits, None)
         self.assertEqual(mid.limit_sum, None)
         self.assertEqual(mid.mapper, None)
-        self.assertEqual(len(self.log_messages), 1)
-        self.assertTrue(self.log_messages[0].startswith(
+        self.assertEqual(len(self.log_messages), 2)
+        self.assertTrue(self.log_messages[1].startswith(
                 'Could not load limits'))
         self.assertEqual(db._actions[0][0], 'sadd')
         self.assertEqual(db._actions[0][1], 'errors_set')

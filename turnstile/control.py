@@ -15,13 +15,11 @@
 
 import hashlib
 import logging
-from multiprocessing import managers
 import random
 import traceback
 import warnings
 
 import eventlet
-import msgpack
 
 from turnstile import limits
 from turnstile import utils
@@ -82,7 +80,7 @@ class LimitData(object):
             self.limit_data = limits[:]
             self.limit_sum = new_sum
 
-    def get_limits(self, db, limit_sum=None):
+    def get_limits(self, limit_sum=None):
         """
         Gets the current limit data if it is different from the data
         indicated by limit_sum.  The db argument is used for hydrating
@@ -97,14 +95,8 @@ class LimitData(object):
             if limit_sum and self.limit_sum == limit_sum:
                 raise NoChangeException()
 
-            # Allow returning just the list of strings
-            if not db:
-                return (self.limit_sum, self.limit_data)
-
             # Return a tuple of the limits and limit sum
-            lims = [limits.Limit.hydrate(db, msgpack.loads(lim))
-                    for lim in self.limit_data]
-            return (self.limit_sum, lims)
+            return (self.limit_sum, self.limit_data)
 
 
 class ControlDaemon(object):
@@ -283,200 +275,6 @@ class ControlDaemon(object):
         # it
         if not self._db:
             self._db = self.middleware.db
-
-        return self._db
-
-
-class RemoteLimitData(LimitData):
-    """
-    Provides remote access to limit data stored in another process.
-    This interacts with the multiprocessing module's Manager support
-    to provide seamless access to the limit data collected by (and
-    stored in) the MultiControlDaemon process.
-    """
-
-    def __init__(self, manager):
-        """
-        Initialize RemoteLimitData.  Stores a reference to the Manager
-        object.
-        """
-
-        self._manager = manager
-
-    @property
-    def limit_data(self):
-        """
-        Read-only access to the limit_data field stored on the remote
-        Manager object.
-        """
-
-        return self._manager.limit_data()._getvalue()
-
-    @property
-    def limit_sum(self):
-        """
-        Read-only access to the limit_sum field stored on the remote
-        Manager object.
-        """
-
-        return self._manager.limit_sum()._getvalue()
-
-    @property
-    def limit_lock(self):
-        """
-        Read-only access to the limit_lock field stored on the remote
-        Manager object.
-        """
-
-        return self._manager.limit_lock()
-
-    def set_limits(self, limits):
-        """
-        Remote limit data is treated as read-only (with external
-        update).
-        """
-
-        raise ValueError("Cannot set remote limit data")
-
-
-class AcquirerProxy(managers.BaseProxy):
-    """
-    Copied from multiprocessing.  Allows the limit_lock to be used to
-    acquire and release locks, complete with context manager-style
-    access.
-    """
-
-    _exposed_ = ('acquire', 'release')
-
-    def acquire(self, blocking=True):
-        """
-        Proxy the acquire() method of the semaphore.
-        """
-
-        return self._callmethod('acquire', (blocking,))
-
-    def release(self):
-        """
-        Proxy the release() method of the semaphore.
-        """
-
-        return self._callmethod('release')
-
-    def __enter__(self):
-        """
-        Proxy the __enter__() method of the semaphore.
-        """
-
-        return self._callmethod('acquire')
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """
-        Proxy the __exit__() method of the semaphore.
-        """
-
-        return self._callmethod('release')
-
-
-class MultiControlDaemon(ControlDaemon):
-    """
-    A daemon process which listens for control messages and can reload
-    the limit configuration from the database.  Based on the
-    ControlDaemon, but starts a multiprocessing Manager process to
-    enable access to the limit data from multiple processes.
-    """
-
-    def __init__(self, middleware, conf):
-        """
-        Initialize the MultiControlDaemon.  Starts the Manager and the
-        listening thread and triggers an immediate reload.
-        """
-
-        # Grab required configuration values
-        required = set(['multi.host', 'multi.port', 'multi.authkey'])
-        values = {}
-        for conf_key in list(required):
-            key = conf_key[6:]
-            try:
-                if key == 'port':
-                    values[key] = int(conf['control'][conf_key])
-                else:
-                    values[key] = conf['control'][conf_key]
-            except KeyError:
-                warnings.warn("Missing value for configuration key "
-                              "'control.%s'" % conf_key)
-            except ValueError:
-                warnings.warn("Invalid port value %r" %
-                              conf['control'][conf_key])
-            else:
-                required.discard(conf_key)
-
-        # Error out if we're missing something critical
-        if required:
-            raise ValueError("Missing required configuration for "
-                             "MultiControlDaemon.  Missing or invalid "
-                             "configuration keys: %s" %
-                             ', '.join(['control.%s' % k for k in
-                                        sorted(required)]))
-
-        super(MultiControlDaemon, self).__init__(middleware, conf)
-
-        # Build a LimitManager
-        class LimitManager(managers.BaseManager):
-            pass
-
-        LimitManager.register('limit_data', lambda: self.limits.limit_data)
-        LimitManager.register('limit_sum', lambda: self.limits.limit_sum)
-        LimitManager.register('limit_lock', lambda: self.limits.limit_lock,
-                              AcquirerProxy)
-
-        # Prepare the manager and the remote limit data
-        self.manager = LimitManager((values['host'], values['port']),
-                                    values['authkey'])
-        self.remote = RemoteLimitData(self.manager)
-
-    def get_limits(self):
-        """
-        Retrieve the LimitData object the middleware will use for
-        getting the limits.  This implementation returns a
-        RemoteLimitData instance that can access the LimitData stored
-        in the MultiControlDaemon process.
-        """
-
-        return self.remote
-
-    def start(self):
-        """
-        Starts the MultiControlDaemon by connecting to the running
-        control daemon process.  If the control daemon process is not
-        currently running, a socket error will be raised.
-        """
-
-        self.manager.connect()
-
-    def serve(self):
-        """
-        Starts the MultiControlDaemon process.  Forks a thread for
-        listening to the Redis database, then initializes and starts
-        the Manager.
-        """
-
-        # Start the listening thread and load the limits
-        super(MultiControlDaemon, self).start()
-
-        # Start the manager in this thread
-        self.manager.get_server().serve_forever()
-
-    @property
-    def db(self):
-        """
-        Obtain a handle for the database.  This allows lazy
-        initialization of the database handle.
-        """
-
-        # Initialize the database handle; we're running in a separate
-        # process, so we need to get_database() ourself
-        if not self._db:
-            self._db = self.config.get_database()
 
         return self._db
 

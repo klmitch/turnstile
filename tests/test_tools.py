@@ -7,8 +7,8 @@ from lxml import etree
 import msgpack
 
 from turnstile import config
-from turnstile import control
 from turnstile import limits
+from turnstile import remote
 from turnstile import tools
 
 import tests
@@ -856,15 +856,15 @@ class TestToolMultiDaemon(BaseToolTest):
         self.served = False
         self.daemon = None
 
-        class FakeMultiControlDaemon(tests.GenericFakeClass):
+        class FakeRemoteControlDaemon(tests.GenericFakeClass):
             def __init__(inst, *args, **kwargs):
-                super(FakeMultiControlDaemon, inst).__init__(*args, **kwargs)
+                super(FakeRemoteControlDaemon, inst).__init__(*args, **kwargs)
                 self.daemon = inst
 
             def serve(inst):
                 self.served = True
 
-        self.stubs.Set(control, 'MultiControlDaemon', FakeMultiControlDaemon)
+        self.stubs.Set(remote, 'RemoteControlDaemon', FakeRemoteControlDaemon)
 
     def test_basic(self):
         with warnings.catch_warnings(record=True) as w:

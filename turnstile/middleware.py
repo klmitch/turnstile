@@ -23,6 +23,8 @@ import routes
 
 from turnstile import config
 from turnstile import control
+from turnstile import database
+from turnstile import remote
 from turnstile import utils
 
 
@@ -184,7 +186,7 @@ class TurnstileMiddleware(object):
         # Initialize the control daemon
         if config.Config.to_bool(self.conf['control'].get('multi', 'no'),
                                  False):
-            self.control_daemon = control.MultiControlDaemon(self, self.conf)
+            self.control_daemon = remote.RemoteControlDaemon(self, self.conf)
         else:
             self.control_daemon = control.ControlDaemon(self, self.conf)
 
@@ -203,16 +205,18 @@ class TurnstileMiddleware(object):
 
         try:
             # Get the new checksum and list of limits
-            new_sum, new_limits = limit_data.get_limits(self.db,
-                                                        self.limit_sum)
+            new_sum, new_limits = limit_data.get_limits(self.limit_sum)
+
+            # Convert the limits list into a list of objects
+            lims = database.limits_hydrate(self.db, new_limits)
 
             # Build a new mapper
             mapper = routes.Mapper(register=False)
-            for lim in new_limits:
+            for lim in lims:
                 lim._route(mapper)
 
             # Save the new data
-            self.limits = new_limits
+            self.limits = lims
             self.limit_sum = new_sum
             self.mapper = mapper
         except control.NoChangeException:

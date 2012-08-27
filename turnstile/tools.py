@@ -22,8 +22,8 @@ from lxml import etree
 import msgpack
 
 from turnstile import config
-from turnstile import control
 from turnstile import limits
+from turnstile import remote
 from turnstile import utils
 
 
@@ -389,7 +389,7 @@ def _multi_daemon(conf_file):
 
     eventlet.monkey_patch()
     conf = config.Config(conf_file=conf_file)
-    daemon = control.MultiControlDaemon(None, conf)
+    daemon = remote.RemoteControlDaemon(None, conf)
     daemon.serve()
 
 

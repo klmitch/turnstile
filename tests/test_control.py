@@ -124,26 +124,24 @@ class TestLimitData(tests.TestCase):
         ld.limit_data = self.test_data
         ld.limit_sum = self.test_chksum
 
-        chksum, lims = ld.get_limits('db')
+        chksum, lims = ld.get_limits()
 
         self.assertEqual(chksum, self.test_chksum)
         self.assertEqual(len(lims), len(self.test_data))
         for idx, lim in enumerate(lims):
-            self.assertEqual(lim.args, ('db',))
-            self.assertEqual(lim.kwargs, dict(limit=self.test_data[idx]))
+            self.assertEqual(lim, self.test_data[idx])
 
     def test_get_limits_wrongsum(self):
         ld = control.LimitData()
         ld.limit_data = self.test_data
         ld.limit_sum = self.test_chksum
 
-        chksum, lims = ld.get_limits('db', self.empty_chksum)
+        chksum, lims = ld.get_limits(self.empty_chksum)
 
         self.assertEqual(chksum, self.test_chksum)
         self.assertEqual(len(lims), len(self.test_data))
         for idx, lim in enumerate(lims):
-            self.assertEqual(lim.args, ('db',))
-            self.assertEqual(lim.kwargs, dict(limit=self.test_data[idx]))
+            self.assertEqual(lim, self.test_data[idx])
 
     def test_get_limits_samesum(self):
         ld = control.LimitData()
@@ -151,7 +149,7 @@ class TestLimitData(tests.TestCase):
         ld.limit_sum = self.test_chksum
 
         self.assertRaises(control.NoChangeException, ld.get_limits,
-                          'db', self.test_chksum)
+                          self.test_chksum)
 
 
 class TestControlDaemon(tests.TestCase):
@@ -729,146 +727,3 @@ class TestControlDaemon(tests.TestCase):
         self.assertTrue(db._actions[2][2].startswith(
                 'Failed to load limits: '))
         self.assertEqual(daemon.pending.balance, 1)
-
-
-class TestRemoteLimitData(tests.TestCase):
-    def test_limit_data(self):
-        manager = tests.GenericFakeClass()
-        manager.limit_data = lambda: FakeProxy(['limit', 'data'])
-        ld = control.RemoteLimitData(manager)
-
-        self.assertEqual(ld.limit_data, ['limit', 'data'])
-
-    def test_limit_sum(self):
-        manager = tests.GenericFakeClass()
-        manager.limit_sum = lambda: FakeProxy('fake_chksum')
-        ld = control.RemoteLimitData(manager)
-
-        self.assertEqual(ld.limit_sum, 'fake_chksum')
-
-    def test_limit_lock(self):
-        manager = tests.GenericFakeClass()
-        manager.limit_lock = lambda: 'lock'
-        ld = control.RemoteLimitData(manager)
-
-        self.assertEqual(ld.limit_lock, 'lock')
-
-    def test_set_limits(self):
-        manager = tests.GenericFakeClass()
-        ld = control.RemoteLimitData(manager)
-
-        self.assertRaises(ValueError, ld.set_limits, ['limit', 'data'])
-
-
-class TestMultiControlDaemon(tests.TestCase):
-    def test_init(self):
-        conf = FakeConfig({
-                'multi.host': '127.0.0.1',
-                'multi.port': '5779',
-                'multi.authkey': 'fakeauth',
-                })
-        daemon = control.MultiControlDaemon(FakeMiddleware(conf), conf)
-
-        self.assertIsInstance(daemon.manager, managers.BaseManager)
-        self.assertIsInstance(daemon.remote, control.RemoteLimitData)
-        self.assertEqual(daemon.remote._manager, daemon.manager)
-        self.assertEqual(daemon.manager.address, ('127.0.0.1', 5779))
-        self.assertEqual(daemon.manager._authkey, 'fakeauth')
-
-    def test_init_nohost(self):
-        conf = FakeConfig({
-                'multi.port': '5779',
-                'multi.authkey': 'fakeauth',
-                })
-        with warnings.catch_warnings(record=True) as w:
-            self.assertRaises(ValueError,
-                              control.MultiControlDaemon,
-                              FakeMiddleware(conf), conf)
-            self.assertIn("Missing value for configuration key "
-                          "'control.multi.host'", w[-1].message)
-
-    def test_init_noport(self):
-        conf = FakeConfig({
-                'multi.host': '127.0.0.1',
-                'multi.authkey': 'fakeauth',
-                })
-        with warnings.catch_warnings(record=True) as w:
-            self.assertRaises(ValueError,
-                              control.MultiControlDaemon,
-                              FakeMiddleware(conf), conf)
-            self.assertIn("Missing value for configuration key "
-                          "'control.multi.port'", w[-1].message)
-
-    def test_init_badport(self):
-        conf = FakeConfig({
-                'multi.host': '127.0.0.1',
-                'multi.port': 'badport',
-                'multi.authkey': 'fakeauth',
-                })
-        with warnings.catch_warnings(record=True) as w:
-            self.assertRaises(ValueError,
-                              control.MultiControlDaemon,
-                              FakeMiddleware(conf), conf)
-            self.assertIn("Invalid port value 'badport'", w[-1].message)
-
-    def test_init_noauth(self):
-        conf = FakeConfig({
-                'multi.host': '127.0.0.1',
-                'multi.port': '5779',
-                })
-        with warnings.catch_warnings(record=True) as w:
-            self.assertRaises(ValueError,
-                              control.MultiControlDaemon,
-                              FakeMiddleware(conf), conf)
-            self.assertIn("Missing value for configuration key "
-                          "'control.multi.authkey'", w[-1].message)
-
-    def test_get_limits(self):
-        conf = FakeConfig({
-                'multi.host': '127.0.0.1',
-                'multi.port': '5779',
-                'multi.authkey': 'fakeauth',
-                })
-        daemon = control.MultiControlDaemon(FakeMiddleware(conf), conf)
-        result = daemon.get_limits()
-
-        self.assertEqual(result, daemon.remote)
-
-    def test_start(self):
-        conf = FakeConfig({
-                'multi.host': '127.0.0.1',
-                'multi.port': '5779',
-                'multi.authkey': 'fakeauth',
-                })
-        daemon = control.MultiControlDaemon(FakeMiddleware(conf), conf)
-        manager = FakeManager()
-        daemon.manager = manager
-
-        daemon.start()
-
-        self.assertEqual(manager._called, [('connect',)])
-
-    def test_serve(self):
-        self.started = False
-
-        def fake_start(inst):
-            self.started = True
-
-        self.stubs.Set(control.ControlDaemon, 'start', fake_start)
-
-        conf = FakeConfig({
-                'multi.host': '127.0.0.1',
-                'multi.port': '5779',
-                'multi.authkey': 'fakeauth',
-                })
-        daemon = control.MultiControlDaemon(FakeMiddleware(conf), conf)
-        manager = FakeManager()
-        daemon.manager = manager
-
-        daemon.serve()
-
-        self.assertEqual(self.started, True)
-        self.assertEqual(manager._called, [
-                ('get_server',),
-                ('serve_forever',),
-                ])

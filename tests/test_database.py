@@ -4,6 +4,7 @@ import msgpack
 import redis
 
 from turnstile import database
+from turnstile import limits
 
 import tests
 from tests import db_fixture
@@ -679,3 +680,23 @@ class TestInitialize(tests.TestCase):
                 arg1='arg1',
                 arg2='2',
                 ))
+
+
+class TestLimitsHydrate(tests.TestCase):
+    def setUp(self):
+        super(TestLimitsHydrate, self).setUp()
+
+        self.stubs.Set(msgpack, 'loads', lambda x: x)
+        self.stubs.Set(limits, 'Limit', db_fixture.FakeLimit)
+
+    def test_limits_hydrate(self):
+        exemplar = [dict(limit=i)
+                    for i in ["Nobody", "inspects", "the",
+                              "spammish", "repetition"]]
+        print exemplar
+        result = database.limits_hydrate('db', exemplar)
+
+        self.assertEqual(len(result), len(exemplar))
+        for idx, lim in enumerate(result):
+            self.assertEqual(lim.args, ('db',))
+            self.assertEqual(lim.kwargs, exemplar[idx])

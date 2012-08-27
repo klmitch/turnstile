@@ -22,10 +22,8 @@ import time
 import warnings
 
 import eventlet
-import msgpack
 
 from turnstile import control
-from turnstile import limits
 from turnstile import utils
 
 
@@ -48,7 +46,7 @@ class Connection(object):
         self._recvbuf = []
         self._recvbuf_partial = ''
 
-    def close(self, purge=True):
+    def close(self):
         """
         Close the connection.
 
@@ -62,12 +60,8 @@ class Connection(object):
                 self._sock.close()
             self._sock = None
 
-        # Purge the message buffer
-        if purge:
-            self._recvbuf = []
-
-        # Always clear the partial buffer--we won't get any complete
-        # messages off of it now...
+        # Purge the message buffers
+        self._recvbuf = []
         self._recvbuf_partial = ''
 
     def send(self, cmd, *payload):
@@ -126,8 +120,7 @@ class Connection(object):
         if not self._sock:
             raise ConnectionClosed("Connection closed")
 
-        # OK, get some data from the socket, but draw the line at a
-        # megabyte
+        # OK, get some data from the socket
         while True:
             try:
                 data = self._sock.recv(4096)
@@ -143,13 +136,9 @@ class Connection(object):
 
             # Did the connection get closed?
             if not data:
-                # Determine if we have messages left to process
-                if self._recvbuf:
-                    self.close(False)  # Don't purge the message buffer
-                    break
-                else:
-                    self.close()
-                    raise ConnectionClosed("Connection closed")
+                # There can never be anything in the buffer here
+                self.close()
+                raise ConnectionClosed("Connection closed")
 
             # Begin parsing the read-in data
             partial = self._recvbuf_partial + data
@@ -191,7 +180,7 @@ def remote(func):
     def wrapper(self, *args, **kwargs):
         if self.mode == 'server':
             # In server mode, call the function
-            return func(*args, **kwargs)
+            return func(self, *args, **kwargs)
 
         # Make sure we're connected
         if not self.conn:
@@ -203,12 +192,17 @@ def remote(func):
         # Receive the response
         cmd, payload = self.conn.recv()
         if cmd == 'ERR':
+            self.close()
             raise Exception("Catastrophic error from server: %s" %
                             payload[0])
-        elif cmd = 'EXC':
+        elif cmd == 'EXC':
             exc_type = utils.import_class(payload[0])
             raise exc_type(payload[1])
-        return payload
+        elif cmd != 'RES':
+            self.close()
+            raise Exception("Invalid command response from server: %s" % cmd)
+
+        return payload[0]
 
     # Mark it a callable
     wrapper._remote = True
@@ -225,7 +219,7 @@ def _create_server(host, port):
     """
 
     exc = socket.error("getaddrinfo returns an empty list")
-    for res in socket.getaddrinfo(host, port, 0, SOCK_STREAM):
+    for res in socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):
         af, socktype, proto, canonname, sa = res
         sock = None
         try:
@@ -259,6 +253,8 @@ class SimpleRPC(object):
     must match the authkey used by the server.  It is strongly
     recommended that this class only be used on the local host.
     """
+
+    connection_class = Connection
 
     def __init__(self, host, port, authkey):
         """
@@ -320,7 +316,8 @@ class SimpleRPC(object):
 
         # Make sure we're in client mode
         if self.mode and self.mode != 'client':
-            raise ValueError("RemoteCaller is not in client mode")
+            raise ValueError("%s is not in client mode" %
+                             self.__class__.__name__)
         self.mode = 'client'
 
         # If we're connected, nothing to do
@@ -331,7 +328,7 @@ class SimpleRPC(object):
         fd = socket.create_connection((self.host, self.port))
 
         # Initialize the connection object
-        self.conn = Connection(fd)
+        self.conn = self.connection_class(fd)
 
         # Authenticate
         try:
@@ -346,9 +343,11 @@ class SimpleRPC(object):
 
             # Log the error
             if exc_type == ValueError:
-                LOG.error("Received bogus response from server: %s" % str(exc))
+                LOG.error("Received bogus response from server: %s" %
+                          str(exc_value))
             elif exc_type == ConnectionClosed:
-                LOG.error("%s while authenticating to server" % str(exc))
+                LOG.error("%s while authenticating to server" %
+                          str(exc_value))
             else:
                 LOG.exception("Failed to authenticate to server")
 
@@ -367,7 +366,8 @@ class SimpleRPC(object):
 
         # Make sure we're in server mode
         if self.mode and self.mode != 'server':
-            raise ValueError("RemoteCaller is not in server mode")
+            raise ValueError("%s is not in server mode" %
+                             self.__class__.__name__)
         self.mode = 'server'
 
         # Obtain a listening socket
@@ -395,7 +395,11 @@ class SimpleRPC(object):
                      (addr[0], addr[1]))
 
             # And handle the connection
-            eventlet.spawn_n(self.serve, Connection(sock), addr)
+            eventlet.spawn_n(self.serve, self.connection_class(sock), addr)
+
+        # Close the listening socket
+        with utils.ignore_except():
+            serv.close()
 
     def serve(self, conn, addr):
         """
@@ -411,7 +415,7 @@ class SimpleRPC(object):
             while True:
                 # Get the command
                 try:
-                    cmd, payload = conn.recv():
+                    cmd, payload = conn.recv()
                 except ValueError as exc:
                     # Tell the client about the error
                     conn.send('ERR', "Failed to parse command: %s" % str(exc))
@@ -438,6 +442,10 @@ class SimpleRPC(object):
                         # Authentication successful
                         conn.send('OK')
                         auth = True
+
+                # Special QUIT command for testing purposes
+                elif cmd == 'QUIT':
+                    return
 
                 # Handle unauthenticated connections
                 elif not auth:
@@ -554,7 +562,7 @@ class RemoteLimitData(object):
 
         raise ValueError("Cannot set remote limit data")
 
-    def get_limits(self, db, limit_sum=None):
+    def get_limits(self, limit_sum=None):
         """
         Gets the current limit data if it is different from the data
         indicated by limit_sum.  The db argument is used for hydrating
@@ -566,12 +574,15 @@ class RemoteLimitData(object):
 
         with self.limit_lock:
             # Grab the checksum and limit list
-            lim_sum, lims = self.limit_rpc.get_limits(limit_sum)
-
-            # Return a tuple of the limits and limit sum
-            lim_objs = [limits.Limit.hydrate(db, msgpack.loads(lim))
-                        for lim in lims]
-            return (lim_sum, lim_objs)
+            try:
+                return self.limit_rpc.get_limits(limit_sum)
+            except control.NoChangeException:
+                # Expected possibility
+                raise
+            except Exception:
+                # Something happened; maybe the server isn't running.
+                # Pretend that there's no change...
+                raise control.NoChangeException()
 
 
 class RemoteControlDaemon(control.ControlDaemon):
@@ -617,7 +628,7 @@ class RemoteControlDaemon(control.ControlDaemon):
         super(RemoteControlDaemon, self).__init__(middleware, conf)
 
         # Set up the RPC object
-        self.remote = ControlDaemonRPC(**values, daemon=self)
+        self.remote = ControlDaemonRPC(daemon=self, **values)
         self.remote_limits = None
 
     def get_limits(self):
@@ -635,14 +646,11 @@ class RemoteControlDaemon(control.ControlDaemon):
 
     def start(self):
         """
-        Starts the RemoteControlDaemon by connecting to the running
-        control daemon process.  No error will be raised if the
-        control daemon process is currently running, to enable that
-        process to be restarted.
+        Starts the RemoteControlDaemon.
         """
 
-        with utils.ignore_except():
-            self.remote.connect()
+        # Don't connect the client yet, to avoid problems if we fork
+        pass
 
     def serve(self):
         """
