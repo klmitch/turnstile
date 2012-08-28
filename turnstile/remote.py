@@ -537,7 +537,7 @@ class ControlDaemonRPC(SimpleRPC):
         if the checksums match.
         """
 
-        return self.daemon.limits.get_limits(None, limit_sum)
+        return self.daemon.limits.get_limits(limit_sum)
 
 
 class RemoteLimitData(object):
