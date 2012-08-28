@@ -5,9 +5,11 @@ import time
 
 import eventlet
 
+from turnstile import control
 from turnstile import remote
 
 import tests
+from tests import db_fixture
 
 
 class FakeSocket(object):
@@ -450,6 +452,17 @@ class TestCreateServer(tests.TestCase):
 class RPCforTest(remote.SimpleRPC):
     connection_class = FakeConnection
 
+    remote_attr = "remote_attr"
+
+    def notremote_func(self, *args, **kwargs):
+        return ('notremote_func', args, kwargs)
+
+    @remote.remote
+    def remote_func(self, *args, **kwargs):
+        if 'do_raise' in kwargs:
+            raise TestException(kwargs['do_raise'])
+        return ('remote_func', args, kwargs)
+
 
 class TestSimpleRPC(tests.TestCase):
     def setUp(self):
@@ -642,3 +655,405 @@ class TestSimpleRPC(tests.TestCase):
         self.assertTrue(self.log_messages[2].startswith(
                 'Too many errors accepting connections: out of clients'))
         self.assertEqual(listen_sock._closed, True)
+
+    def test_serve_badparse_unauth(self):
+        conn = FakeConnection([
+                ValueError("Bad parse"),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='ERR',
+                     payload=("Failed to parse command: Bad parse",)),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_badparse_auth(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('authkey',)),
+                ValueError("Bad parse"),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='OK', payload=()),
+                dict(cmd='ERR',
+                     payload=("Failed to parse command: Bad parse",)),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('authkey',)",
+                "Received command 'QUIT' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_badauth(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('badauth',)),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='ERR', payload=("Invalid authentication key",)),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('badauth',)",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_doubleauth(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('authkey',)),
+                dict(cmd='AUTH', payload=('badauth',)),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='OK', payload=()),
+                dict(cmd='ERR', payload=("Already authenticated",)),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('authkey',)",
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('badauth',)",
+                "Received command 'QUIT' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_unauth(self):
+        conn = FakeConnection([
+                dict(cmd='PING', payload=(11111,)),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='ERR', payload=("Not authenticated",)),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'PING' from 127.0.0.1 port 1023; payload: "
+                "(11111,)",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_ping(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('authkey',)),
+                dict(cmd='PING', payload=(11111,)),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='OK', payload=()),
+                dict(cmd='PONG', payload=(11111,)),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('authkey',)",
+                "Received command 'PING' from 127.0.0.1 port 1023; payload: "
+                "(11111,)",
+                "Received command 'QUIT' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_call_badpayload(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('authkey',)),
+                dict(cmd='CALL', payload=()),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='OK', payload=()),
+                dict(cmd='ERR', payload=(
+                        "Invalid payload for 'CALL' command: "
+                        "need more than 0 values to unpack",)),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('authkey',)",
+                "Received command 'CALL' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Received command 'QUIT' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_call_nosuch(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('authkey',)),
+                dict(cmd='CALL', payload=('nosuch_func', (1, 2), dict(a=4))),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='OK', payload=()),
+                dict(cmd='EXC', payload=('exceptions:AttributeError',
+                                         "'RPCforTest' object has no "
+                                         "attribute 'nosuch_func'")),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('authkey',)",
+                "Received command 'CALL' from 127.0.0.1 port 1023; payload: "
+                "('nosuch_func', (1, 2), {'a': 4})",
+                "Received command 'QUIT' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_call_attr(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('authkey',)),
+                dict(cmd='CALL', payload=('remote_attr', (1, 2), dict(a=4))),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='OK', payload=()),
+                dict(cmd='EXC', payload=('exceptions:AttributeError',
+                                         "'RPCforTest' object has no "
+                                         "attribute 'remote_attr'")),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('authkey',)",
+                "Received command 'CALL' from 127.0.0.1 port 1023; payload: "
+                "('remote_attr', (1, 2), {'a': 4})",
+                "Received command 'QUIT' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_call_noremote(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('authkey',)),
+                dict(cmd='CALL', payload=('noremote_func', (1, 2), dict(a=4))),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='OK', payload=()),
+                dict(cmd='EXC', payload=('exceptions:AttributeError',
+                                         "'RPCforTest' object has no "
+                                         "attribute 'noremote_func'")),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('authkey',)",
+                "Received command 'CALL' from 127.0.0.1 port 1023; payload: "
+                "('noremote_func', (1, 2), {'a': 4})",
+                "Received command 'QUIT' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_call_raise(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('authkey',)),
+                dict(cmd='CALL', payload=('remote_func', (1, 2),
+                                          dict(a=4, do_raise="testing"))),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+        rpc.mode = 'server'
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='OK', payload=()),
+                dict(cmd='EXC', payload=('tests.test_remote:TestException',
+                                         "testing")),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('authkey',)",
+                "Received command 'CALL' from 127.0.0.1 port 1023; payload: "
+                "('remote_func', (1, 2), {'a': 4, 'do_raise': 'testing'})",
+                "Received command 'QUIT' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_call_result(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('authkey',)),
+                dict(cmd='CALL', payload=('remote_func', (1, 2), dict(a=4))),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+        rpc.mode = 'server'
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='OK', payload=()),
+                dict(cmd='RES', payload=(('remote_func', (1, 2), dict(a=4)),)),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('authkey',)",
+                "Received command 'CALL' from 127.0.0.1 port 1023; payload: "
+                "('remote_func', (1, 2), {'a': 4})",
+                "Received command 'QUIT' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_unknown(self):
+        conn = FakeConnection([
+                dict(cmd='AUTH', payload=('authkey',)),
+                dict(cmd='XXXX', payload=()),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [
+                dict(cmd='OK', payload=()),
+                dict(cmd='ERR', payload=("Unrecognized command 'XXXX'",)),
+                ])
+        self.assertEqual(self.log_messages, [
+                "Received command 'AUTH' from 127.0.0.1 port 1023; payload: "
+                "('authkey',)",
+                "Received command 'XXXX' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Received command 'QUIT' from 127.0.0.1 port 1023; payload: "
+                "()",
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_closed(self):
+        conn = FakeConnection([
+                remote.ConnectionClosed("Connection closed"),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [])
+        self.assertEqual(self.log_messages, [
+                "Closing connection from 127.0.0.1 port 1023",
+                ])
+
+    def test_serve_exception(self):
+        conn = FakeConnection([
+                TestException("test exception"),
+                dict(cmd='QUIT', payload=()),
+                ])
+
+        rpc = RPCforTest('localhost', 'port', 'authkey')
+
+        rpc.serve(conn, ('127.0.0.1', 1023))
+
+        self.assertEqual(conn._closed, True)
+        self.assertEqual(conn._sendbuf, [])
+        self.assertEqual(len(self.log_messages), 2)
+        self.assertTrue(self.log_messages[0].startswith(
+                'Error serving client at 127.0.0.1 port 1023: test exception'))
+        self.assertEqual(self.log_messages[1],
+                         "Closing connection from 127.0.0.1 port 1023")
+
+
+class FakeControlDaemon(object):
+    def __init__(self, limits=[]):
+        self.limits = db_fixture.FakeLimitData(limits)
+
+
+class TestControlDaemonRPC(tests.TestCase):
+    def test_init(self):
+        rpc = remote.ControlDaemonRPC('localhost', 'port', 'authkey',
+                                      'daemon')
+
+        self.assertEqual(rpc.host, 'localhost')
+        self.assertEqual(rpc.port, 'port')
+        self.assertEqual(rpc.authkey, 'authkey')
+        self.assertEqual(rpc.daemon, 'daemon')
+        self.assertEqual(rpc.mode, None)
+        self.assertEqual(rpc.conn, None)
+
+    def test_get_limits(self):
+        limits = ["Nobody", "inspects", "the", "spammish", "repetition"]
+        daemon = FakeControlDaemon(limits)
+        rpc = remote.ControlDaemonRPC('localhost', 'port', 'authkey',
+                                      daemon)
+        rpc.mode = 'server'
+
+        result = rpc.get_limits(0)
+
+        self.assertEqual(result, (len(limits), limits))
+
+    def test_get_limits_unchanged(self):
+        limits = ["Nobody", "inspects", "the", "spammish", "repetition"]
+        daemon = FakeControlDaemon(limits)
+        rpc = remote.ControlDaemonRPC('localhost', 'port', 'authkey',
+                                      daemon)
+        rpc.mode = 'server'
+
+        self.assertRaises(control.NoChangeException, rpc.get_limits, 5)
