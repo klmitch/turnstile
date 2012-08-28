@@ -473,7 +473,9 @@ class SimpleRPC(object):
                         if (not func or
                             not callable(func) or
                             not getattr(func, '_remote', False)):
-                            raise NameError("name %r not defined" % funcname)
+                            raise AttributeError(
+                                "%r object has no attribute %r" %
+                                (self.__class__.__name__, funcname))
 
                         # Call the function
                         result = func(*args, **kwargs)
