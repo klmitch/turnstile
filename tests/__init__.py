@@ -3,6 +3,7 @@ import unittest
 
 import stubout
 
+from turnstile import config
 from turnstile import utils
 
 
@@ -71,3 +72,22 @@ class GenericFakeClass(object):
     def __init__(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
+
+
+class FakeConfig(config.Config):
+    def __init__(self, conf, db=None):
+        conf = dict(('control.%s' % k, v) for k, v in conf.items())
+        super(FakeConfig, self).__init__(conf_dict=conf)
+        self._db = db
+
+    def get_database(self, override=None):
+        return self._db
+
+
+class FakeMiddleware(object):
+    def __init__(self, conf=None):
+        self.config = conf or FakeConfig({})
+
+    @property
+    def db(self):
+        return self.config.get_database()

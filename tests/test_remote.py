@@ -2,6 +2,7 @@ import errno
 import json
 import socket
 import time
+import warnings
 
 import eventlet
 
@@ -1057,3 +1058,194 @@ class TestControlDaemonRPC(tests.TestCase):
         rpc.mode = 'server'
 
         self.assertRaises(control.NoChangeException, rpc.get_limits, 5)
+
+
+class TestRemoteLimitData(tests.TestCase):
+    def test_set_limits(self):
+        rpc = db_fixture.FakeLimitData()  # Not RPC, but works...
+        ld = remote.RemoteLimitData(rpc)
+
+        self.assertRaises(ValueError, ld.set_limits, ['limit', 'data'])
+
+    def test_get_limits(self):
+        rpc = db_fixture.FakeLimitData(["Nobody", "inspects", "the",
+                                        "spammish", "repetition"])
+        ld = remote.RemoteLimitData(rpc)
+
+        result = ld.get_limits()
+
+        self.assertEqual(result, (5, ["Nobody", "inspects", "the",
+                                      "spammish", "repetition"]))
+
+    def test_get_limits_nochange(self):
+        rpc = db_fixture.FakeLimitData(["Nobody", "inspects", "the",
+                                        "spammish", "repetition"])
+        ld = remote.RemoteLimitData(rpc)
+
+        self.assertRaises(control.NoChangeException, ld.get_limits, 5)
+
+    def test_get_limits_error(self):
+        rpc = db_fixture.FakeLimitData([TestException("haha")])
+        ld = remote.RemoteLimitData(rpc)
+
+        self.assertRaises(control.NoChangeException, ld.get_limits)
+
+
+class FakeControlDaemonRPC(tests.GenericFakeClass):
+    def __init__(self, *args, **kwargs):
+        super(FakeControlDaemonRPC, self).__init__(*args, **kwargs)
+        self._listening = False
+
+    def listen(self):
+        self._listening = True
+
+
+class TestRemoteControlDaemon(tests.TestCase):
+    def setUp(self):
+        super(TestRemoteControlDaemon, self).setUp()
+
+        self.stubs.Set(remote, 'ControlDaemonRPC', FakeControlDaemonRPC)
+
+    def test_init(self):
+        conf = tests.FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                'multi.authkey': 'fakeauth',
+                })
+        daemon = remote.RemoteControlDaemon(tests.FakeMiddleware(conf), conf)
+
+        self.assertIsInstance(daemon.remote, FakeControlDaemonRPC)
+        self.assertEqual(daemon.remote.args, ())
+        self.assertEqual(daemon.remote.kwargs, dict(
+                daemon=daemon,
+                host='127.0.0.1',
+                port=5779,
+                authkey='fakeauth',
+                ))
+        self.assertEqual(daemon.remote_limits, None)
+
+    def test_init_nohost(self):
+        conf = tests.FakeConfig({
+                'multi.port': '5779',
+                'multi.authkey': 'fakeauth',
+                })
+        with warnings.catch_warnings(record=True) as w:
+            self.assertRaises(ValueError,
+                              remote.RemoteControlDaemon,
+                              tests.FakeMiddleware(conf), conf)
+            self.assertIn("Missing value for configuration key "
+                          "'control.multi.host'", w[-1].message)
+
+    def test_init_noport(self):
+        conf = tests.FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.authkey': 'fakeauth',
+                })
+        with warnings.catch_warnings(record=True) as w:
+            self.assertRaises(ValueError,
+                              remote.RemoteControlDaemon,
+                              tests.FakeMiddleware(conf), conf)
+            self.assertIn("Missing value for configuration key "
+                          "'control.multi.port'", w[-1].message)
+
+    def test_init_badport(self):
+        conf = tests.FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': 'badport',
+                'multi.authkey': 'fakeauth',
+                })
+        with warnings.catch_warnings(record=True) as w:
+            self.assertRaises(ValueError,
+                              remote.RemoteControlDaemon,
+                              tests.FakeMiddleware(conf), conf)
+            self.assertIn("Invalid value for configuration key "
+                          "'control.multi.port'", w[-1].message)
+
+    def test_init_noauth(self):
+        conf = tests.FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                })
+        with warnings.catch_warnings(record=True) as w:
+            self.assertRaises(ValueError,
+                              remote.RemoteControlDaemon,
+                              tests.FakeMiddleware(conf), conf)
+            self.assertIn("Missing value for configuration key "
+                          "'control.multi.authkey'", w[-1].message)
+
+    def test_get_limits_existing(self):
+        conf = tests.FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                'multi.authkey': 'authkey',
+                })
+        daemon = remote.RemoteControlDaemon(tests.FakeMiddleware(conf), conf)
+        daemon.remote_limits = 'remote'
+
+        result = daemon.get_limits()
+
+        self.assertEqual(result, 'remote')
+        self.assertEqual(daemon.remote_limits, 'remote')
+
+    def test_get_limits_new(self):
+        self.stubs.Set(remote, 'RemoteLimitData', tests.GenericFakeClass)
+
+        conf = tests.FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                'multi.authkey': 'authkey',
+                })
+        daemon = remote.RemoteControlDaemon(tests.FakeMiddleware(conf), conf)
+
+        result = daemon.get_limits()
+
+        self.assertEqual(result, daemon.remote_limits)
+        self.assertIsInstance(result, tests.GenericFakeClass)
+        self.assertEqual(result.args, (daemon.remote,))
+
+    def test_start(self):
+        self.spawned = False
+        self.reloaded = False
+
+        def fake_spawn_n(method, *args, **kwargs):
+            self.spawned = (method, args, kwargs)
+            return self.spawned
+
+        def fake_reload(inst):
+            self.reloaded = True
+
+        self.stubs.Set(eventlet, 'spawn_n', fake_spawn_n)
+        self.stubs.Set(remote.RemoteControlDaemon, 'reload', fake_reload)
+
+        conf = tests.FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                'multi.authkey': 'fakeauth',
+                })
+        daemon = remote.RemoteControlDaemon(tests.FakeMiddleware(conf), conf)
+
+        daemon.start()
+
+        # The start method must do nothing
+        self.assertEqual(self.spawned, False)
+        self.assertEqual(self.reloaded, False)
+
+    def test_serve(self):
+        self.started = False
+
+        def fake_start(inst):
+            self.started = True
+
+        self.stubs.Set(control.ControlDaemon, 'start', fake_start)
+
+        conf = tests.FakeConfig({
+                'multi.host': '127.0.0.1',
+                'multi.port': '5779',
+                'multi.authkey': 'fakeauth',
+                })
+        daemon = remote.RemoteControlDaemon(tests.FakeMiddleware(conf), conf)
+
+        daemon.serve()
+
+        self.assertEqual(self.started, True)
+        self.assertEqual(daemon.remote._listening, True)

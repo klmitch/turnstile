@@ -14,42 +14,6 @@ import tests
 from tests import db_fixture
 
 
-class FakeConfig(config.Config):
-    def __init__(self, conf, db=None):
-        conf = dict(('control.%s' % k, v) for k, v in conf.items())
-        super(FakeConfig, self).__init__(conf_dict=conf)
-        self._db = db
-
-    def get_database(self, override=None):
-        return self._db
-
-
-class FakeMiddleware(object):
-    def __init__(self, conf=None):
-        self.config = conf or FakeConfig({})
-
-    @property
-    def db(self):
-        return self.config.get_database()
-
-
-class FakeManager(object):
-    def __init__(self):
-        self._called = []
-
-    def connect(self):
-        self._called.append(('connect',))
-
-    def get_server(self):
-        self._called.append(('get_server',))
-
-        class FakeServer(object):
-            def serve_forever(inst):
-                self._called.append(('serve_forever',))
-
-        return FakeServer()
-
-
 class ControlDaemonTest(control.ControlDaemon):
     def __init__(self, middleware, conf):
         super(ControlDaemonTest, self).__init__(middleware, conf)
@@ -72,14 +36,6 @@ class ControlDaemonTest(control.ControlDaemon):
     def failure(self, daemon, *args):
         self._command_log.append(('failure', args))
         raise Exception("Failure")
-
-
-class FakeProxy(object):
-    def __init__(self, value):
-        self._value = value
-
-    def _getvalue(self):
-        return self._value
 
 
 class TestLimitData(tests.TestCase):
@@ -191,7 +147,7 @@ class TestControlDaemon(tests.TestCase):
         self.stubs.Set(control.ControlDaemon, 'listen', lambda obj: 'listen')
         self.stubs.Set(control.ControlDaemon, 'reload', fake_reload)
 
-        mid = FakeMiddleware()
+        mid = tests.FakeMiddleware()
         daemon = control.ControlDaemon(mid, 'config')
         daemon._reloaded = False
 
@@ -210,7 +166,7 @@ class TestControlDaemon(tests.TestCase):
         self.stubs.Set(control.ControlDaemon, 'listen', lambda obj: 'listen')
         self.stubs.Set(control.ControlDaemon, 'reload', fake_reload)
 
-        daemon = control.ControlDaemon(FakeMiddleware(), 'config')
+        daemon = control.ControlDaemon(tests.FakeMiddleware(), 'config')
         daemon._reloaded = False
         daemon.start()
 
@@ -221,8 +177,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
 
         db = db_fixture.FakeDatabase()
-        conf = FakeConfig({}, db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(db._actions, [('pubsub', (), {})])
@@ -237,8 +193,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
 
         db = db_fixture.FakeDatabase()
-        conf = FakeConfig(dict(shard_hint='shard'), db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(shard_hint='shard'), db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(db._actions, [('pubsub', (),
@@ -254,8 +210,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
 
         db = db_fixture.FakeDatabase()
-        conf = FakeConfig(dict(channel='spam'), db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(channel='spam'), db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(db._actions, [('pubsub', (), {})])
@@ -273,8 +229,8 @@ class TestControlDaemon(tests.TestCase):
                 pattern=None,
                 channel='control',
                 data='test:foo'))
-        conf = FakeConfig({}, db)
-        daemon = ControlDaemonTest(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = ControlDaemonTest(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
@@ -286,8 +242,8 @@ class TestControlDaemon(tests.TestCase):
                 pattern=None,
                 channel='wrongchannel',
                 data='test:foo'))
-        conf = FakeConfig({}, db)
-        daemon = ControlDaemonTest(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = ControlDaemonTest(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
@@ -299,8 +255,8 @@ class TestControlDaemon(tests.TestCase):
                 pattern=None,
                 channel='control',
                 data=':foo'))
-        conf = FakeConfig({}, db)
-        daemon = ControlDaemonTest(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = ControlDaemonTest(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
@@ -312,8 +268,8 @@ class TestControlDaemon(tests.TestCase):
                 pattern=None,
                 channel='control',
                 data='_internal:foo'))
-        conf = FakeConfig({}, db)
-        daemon = ControlDaemonTest(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = ControlDaemonTest(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
@@ -328,8 +284,8 @@ class TestControlDaemon(tests.TestCase):
                 pattern=None,
                 channel='control',
                 data='unknown:foo'))
-        conf = FakeConfig({}, db)
-        daemon = ControlDaemonTest(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = ControlDaemonTest(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
@@ -344,8 +300,8 @@ class TestControlDaemon(tests.TestCase):
                 pattern=None,
                 channel='control',
                 data='test:arg1:arg2'))
-        conf = FakeConfig({}, db)
-        daemon = ControlDaemonTest(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = ControlDaemonTest(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(daemon._command_log, [])
@@ -361,8 +317,8 @@ class TestControlDaemon(tests.TestCase):
                 pattern=None,
                 channel='control',
                 data='failure:arg1:arg2'))
-        conf = FakeConfig({}, db)
-        daemon = ControlDaemonTest(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = ControlDaemonTest(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(daemon._command_log, [('failure', ('arg1', 'arg2'))])
@@ -378,8 +334,8 @@ class TestControlDaemon(tests.TestCase):
                 pattern=None,
                 channel='control',
                 data='test:arg'))
-        conf = FakeConfig({}, db)
-        daemon = ControlDaemonTest(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = ControlDaemonTest(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(daemon._command_log, [('test', 'arg')])
@@ -392,8 +348,8 @@ class TestControlDaemon(tests.TestCase):
                 pattern=None,
                 channel='alternate',
                 data='test:arg'))
-        conf = FakeConfig(dict(channel='alternate'), db)
-        daemon = ControlDaemonTest(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(channel='alternate'), db)
+        daemon = ControlDaemonTest(tests.FakeMiddleware(conf), conf)
         daemon.listen()
 
         self.assertEqual(daemon._command_log, [('test', 'arg')])
@@ -403,8 +359,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
 
         db = db_fixture.FakeDatabase()
-        conf = FakeConfig({}, db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.ping(daemon, None)
 
         self.assertEqual(db._published, [])
@@ -413,8 +369,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
 
         db = db_fixture.FakeDatabase()
-        conf = FakeConfig({}, db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.ping(daemon, 'pong')
 
         self.assertEqual(db._published, [('pong', 'pong')])
@@ -423,8 +379,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
 
         db = db_fixture.FakeDatabase()
-        conf = FakeConfig(dict(node_name='node'), db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(node_name='node'), db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.ping(daemon, 'pong')
 
         self.assertEqual(db._published, [('pong', 'pong:node')])
@@ -433,8 +389,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
 
         db = db_fixture.FakeDatabase()
-        conf = FakeConfig({}, db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.ping(daemon, 'pong', 'data')
 
         self.assertEqual(db._published, [('pong', 'pong::data')])
@@ -443,8 +399,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
 
         db = db_fixture.FakeDatabase()
-        conf = FakeConfig(dict(node_name='node'), db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(node_name='node'), db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.ping(daemon, 'pong', 'data')
 
         self.assertEqual(db._published, [('pong', 'pong:node:data')])
@@ -453,8 +409,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig({})
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({})
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon)
 
         self.assertEqual(self.spawns, [
@@ -465,8 +421,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig(dict(reload_spread='23.5.3'))
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(reload_spread='23.5.3'))
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon)
 
         self.assertEqual(self.spawns, [
@@ -477,8 +433,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig(dict(reload_spread='23'))
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(reload_spread='23'))
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon)
 
         self.assertEqual(self.spawns, [
@@ -489,8 +445,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig({})
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({})
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'badtype')
 
         self.assertEqual(self.spawns, [
@@ -501,8 +457,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig(dict(reload_spread='23.5.3'))
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(reload_spread='23.5.3'))
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'badtype')
 
         self.assertEqual(self.spawns, [
@@ -513,8 +469,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig(dict(reload_spread='23'))
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(reload_spread='23'))
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'badtype')
 
         self.assertEqual(self.spawns, [
@@ -525,8 +481,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig({})
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({})
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'immediate')
 
         self.assertEqual(self.spawns, [
@@ -537,8 +493,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig(dict(reload_spread='23'))
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(reload_spread='23'))
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'immediate')
 
         self.assertEqual(self.spawns, [
@@ -549,8 +505,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig({})
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({})
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'spread')
 
         self.assertEqual(self.spawns, [
@@ -561,8 +517,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig(dict(reload_spread='23.5.3'))
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(reload_spread='23.5.3'))
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'spread')
 
         self.assertEqual(self.spawns, [
@@ -573,8 +529,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig(dict(reload_spread='23'))
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(reload_spread='23'))
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'spread')
 
         self.assertEqual(self.spawns, [
@@ -585,8 +541,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig({})
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({})
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'spread', '18')
 
         self.assertEqual(self.spawns, [
@@ -597,8 +553,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig(dict(reload_spread='23'))
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(reload_spread='23'))
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'spread', '18.0.5')
 
         self.assertEqual(self.spawns, [
@@ -609,8 +565,8 @@ class TestControlDaemon(tests.TestCase):
         self.stub_start()
         self.stub_spawn()
 
-        conf = FakeConfig(dict(reload_spread='23'))
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(reload_spread='23'))
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         control.reload(daemon, 'spread', '18')
 
         self.assertEqual(self.spawns, [
@@ -626,8 +582,8 @@ class TestControlDaemon(tests.TestCase):
             (10, dict(limit='limit1')),
             (20, dict(limit='limit2')),
             ]
-        conf = FakeConfig({}, db)
-        middleware = FakeMiddleware(conf)
+        conf = tests.FakeConfig({}, db)
+        middleware = tests.FakeMiddleware(conf)
         daemon = control.ControlDaemon(middleware, conf)
         daemon.pending.acquire()
         daemon.reload()
@@ -644,8 +600,8 @@ class TestControlDaemon(tests.TestCase):
             (10, dict(limit='limit1')),
             (20, dict(limit='limit2')),
             ]
-        conf = FakeConfig({}, db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         daemon.reload()
 
         self.assertEqual(db._actions, [('zrange', 'limits', 0, -1)])
@@ -663,8 +619,8 @@ class TestControlDaemon(tests.TestCase):
             (10, dict(limit='limit1')),
             (20, dict(limit='limit2')),
             ]
-        conf = FakeConfig(dict(limits_key='alternate'), db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig(dict(limits_key='alternate'), db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         daemon.reload()
 
         self.assertEqual(db._actions, [('zrange', 'alternate', 0, -1)])
@@ -680,8 +636,8 @@ class TestControlDaemon(tests.TestCase):
         db = db_fixture.FakeDatabase()
         db._fakedb['limits'] = []
         db._fakedb['errors'] = set()
-        conf = FakeConfig({}, db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        conf = tests.FakeConfig({}, db)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         daemon.reload()
 
         self.assertEqual(len(self.log_messages), 1)
@@ -706,11 +662,11 @@ class TestControlDaemon(tests.TestCase):
         db = db_fixture.FakeDatabase()
         db._fakedb['limits'] = []
         db._fakedb['errors_set'] = set()
-        conf = FakeConfig(dict(
+        conf = tests.FakeConfig(dict(
                 errors_key='errors_set',
                 errors_channel='errors_channel',
                 ), db)
-        daemon = control.ControlDaemon(FakeMiddleware(conf), conf)
+        daemon = control.ControlDaemon(tests.FakeMiddleware(conf), conf)
         daemon.reload()
 
         self.assertEqual(len(self.log_messages), 1)

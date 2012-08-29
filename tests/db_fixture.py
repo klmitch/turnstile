@@ -158,4 +158,6 @@ class FakeLimitData(object):
     def get_limits(self, limit_sum=None):
         if limit_sum and self.limit_sum == limit_sum:
             raise control.NoChangeException()
+        elif self.limit_data and isinstance(self.limit_data[0], Exception):
+            raise self.limit_data[0]
         return (self.limit_sum, self.limit_data)
