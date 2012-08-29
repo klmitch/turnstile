@@ -1,3 +1,5 @@
+import logging
+import logging.config
 import StringIO
 import sys
 import warnings
@@ -66,29 +68,22 @@ class FakeLimit(tests.GenericFakeClass):
 
 
 class FakeNamespace(object):
-    config = 'config'
-    limits_file = 'limits.xml'
-    reload = False
-    dry_run = True
-    debug = False
+    def __init__(self, params):
+        self._params = params
+
+    def __getattr__(self, name):
+        return self._params[name]
 
 
 class FakeArgumentParser(object):
-    def __init__(self, *args, **kwargs):
-        pass
+    def __init__(self, params):
+        self._params = params
 
     def add_argument(self, *args, **kwargs):
         pass
 
     def parse_args(self):
-        return FakeNamespace()
-
-
-class FakeArgumentParserDebug(FakeArgumentParser):
-    def parse_args(self):
-        ns = super(FakeArgumentParserDebug, self).parse_args()
-        ns.debug = True
-        return ns
+        return FakeNamespace(self._params)
 
 
 class TestParseLimitNode(tests.TestCase):
@@ -493,16 +488,18 @@ class ConsoleScriptsTestCase(tests.TestCase):
         self.stubs.Set(tools, '_%s' % self.subroutine.__name__,
                        fake_subroutine)
 
-    def stub_argparse(self, debug=False):
-        cls = FakeArgumentParserDebug if debug else FakeArgumentParser
-        self.stubs.Set(argparse, 'ArgumentParser', cls)
+    def stub_argparse(self, **params):
+        def fake_ArgumentParser(*args, **kwargs):
+            return FakeArgumentParser(params)
+        self.stubs.Set(argparse, 'ArgumentParser', fake_ArgumentParser)
 
 
 class TestConsoleSetupLimits(ConsoleScriptsTestCase):
     subroutine = staticmethod(tools.setup_limits)
 
     def test_basic(self):
-        self.stub_argparse()
+        self.stub_argparse(config='config', limits_file='limits.xml',
+                           reload=False, dry_run=True, debug=False)
         res = self.subroutine()
 
         self.assertEqual(res, None)
@@ -510,7 +507,8 @@ class TestConsoleSetupLimits(ConsoleScriptsTestCase):
                          (('config', 'limits.xml', False, True, False), {}))
 
     def test_exception(self):
-        self.stub_argparse()
+        self.stub_argparse(config='config', limits_file='limits.xml',
+                           reload=False, dry_run=True, debug=False)
         self.result = Exception("An error occurred")
         res = self.subroutine()
 
@@ -519,7 +517,8 @@ class TestConsoleSetupLimits(ConsoleScriptsTestCase):
                          (('config', 'limits.xml', False, True, False), {}))
 
     def test_exception_debug(self):
-        self.stub_argparse(True)
+        self.stub_argparse(config='config', limits_file='limits.xml',
+                           reload=False, dry_run=True, debug=True)
         self.result = Exception("An error occurred")
 
         with self.assertRaises(Exception):
@@ -533,7 +532,8 @@ class TestConsoleDumpLimits(ConsoleScriptsTestCase):
     subroutine = staticmethod(tools.dump_limits)
 
     def test_basic(self):
-        self.stub_argparse()
+        self.stub_argparse(config='config', limits_file='limits.xml',
+                           debug=False)
         res = self.subroutine()
 
         self.assertEqual(res, None)
@@ -541,7 +541,8 @@ class TestConsoleDumpLimits(ConsoleScriptsTestCase):
                          (('config', 'limits.xml', False), {}))
 
     def test_exception(self):
-        self.stub_argparse()
+        self.stub_argparse(config='config', limits_file='limits.xml',
+                           debug=False)
         self.result = Exception("An error occurred")
         res = self.subroutine()
 
@@ -550,7 +551,8 @@ class TestConsoleDumpLimits(ConsoleScriptsTestCase):
                          (('config', 'limits.xml', False), {}))
 
     def test_exception_debug(self):
-        self.stub_argparse(True)
+        self.stub_argparse(config='config', limits_file='limits.xml',
+                           debug=True)
         self.result = Exception("An error occurred")
 
         with self.assertRaises(Exception):
@@ -563,29 +565,59 @@ class TestConsoleDumpLimits(ConsoleScriptsTestCase):
 class TestConsoleMultiDaemon(ConsoleScriptsTestCase):
     subroutine = staticmethod(tools.multi_daemon)
 
+    def setUp(self):
+        super(TestConsoleMultiDaemon, self).setUp()
+
+        self.logging_config = None
+        self.logging_basic = False
+
+        def fake_fileConfig(filename):
+            self.logging_config = filename
+
+        def fake_basicConfig():
+            self.logging_basic = True
+
+        self.stubs.Set(logging.config, 'fileConfig', fake_fileConfig)
+        self.stubs.Set(logging, 'basicConfig', fake_basicConfig)
+
     def test_basic(self):
-        self.stub_argparse()
+        self.stub_argparse(config='config', logging=None, debug=False)
         res = self.subroutine()
 
         self.assertEqual(res, None)
         self.assertEqual(self.subargs, (('config',), {}))
+        self.assertEqual(self.logging_config, None)
+        self.assertEqual(self.logging_basic, True)
+
+    def test_logging(self):
+        self.stub_argparse(config='config', logging='log.conf', debug=False)
+        res = self.subroutine()
+
+        self.assertEqual(res, None)
+        self.assertEqual(self.subargs, (('config',), {}))
+        self.assertEqual(self.logging_config, 'log.conf')
+        self.assertEqual(self.logging_basic, False)
 
     def test_exception(self):
-        self.stub_argparse()
+        self.stub_argparse(config='config', logging=None, debug=False)
         self.result = Exception("An error occurred")
         res = self.subroutine()
 
         self.assertEqual(res, "An error occurred")
         self.assertEqual(self.subargs, (('config',), {}))
+        self.assertEqual(self.logging_config, None)
+        self.assertEqual(self.logging_basic, True)
 
     def test_exception_debug(self):
-        self.stub_argparse(True)
+        self.stub_argparse(config='config', logging=None, debug=True)
         self.result = Exception("An error occurred")
 
         with self.assertRaises(Exception):
             res = self.subroutine()
 
         self.assertEqual(self.subargs, (('config',), {}))
+        self.assertEqual(self.logging_config, None)
+        self.assertEqual(self.logging_basic, True)
 
 
 class BaseToolTest(tests.TestCase):

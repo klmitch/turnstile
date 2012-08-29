@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import logging
+import logging.config
 import sys
 import warnings
 
@@ -405,6 +407,11 @@ def multi_daemon():
 
     parser.add_argument('config',
                         help="Name of the configuration file.")
+    parser.add_argument('--log-config', '-l',
+                        dest='logging',
+                        action='store',
+                        default=None,
+                        help="Specify a logging configuration file.")
     parser.add_argument('--debug', '-d',
                         dest='debug',
                         action='store_true',
@@ -412,6 +419,13 @@ def multi_daemon():
                         help="Run the tool in debug mode.")
 
     args = parser.parse_args()
+
+    # Set up logging
+    if args.logging:
+        logging.config.fileConfig(args.logging)
+    else:
+        logging.basicConfig()
+
     try:
         _multi_daemon(args.config)
     except Exception as exc:
