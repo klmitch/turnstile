@@ -3,6 +3,7 @@ import sys
 import warnings
 
 import argparse
+import eventlet
 from lxml import etree
 import msgpack
 
@@ -855,6 +856,7 @@ class TestToolMultiDaemon(BaseToolTest):
 
         self.served = False
         self.daemon = None
+        self.monkey_patched = False
 
         class FakeRemoteControlDaemon(tests.GenericFakeClass):
             def __init__(inst, *args, **kwargs):
@@ -864,7 +866,11 @@ class TestToolMultiDaemon(BaseToolTest):
             def serve(inst):
                 self.served = True
 
+        def fake_monkey_patch():
+            self.monkey_patched = True
+
         self.stubs.Set(remote, 'RemoteControlDaemon', FakeRemoteControlDaemon)
+        self.stubs.Set(eventlet, 'monkey_patch', fake_monkey_patch)
 
     def test_basic(self):
         with warnings.catch_warnings(record=True) as w:
@@ -872,6 +878,7 @@ class TestToolMultiDaemon(BaseToolTest):
 
             self.assertEqual(len(w), 0)
 
+        self.assertEqual(self.monkey_patched, True)
         self.assertEqual(self.served, True)
         self.assertEqual(self.daemon.args[0], None)
         self.assertIsInstance(self.daemon.args[1], config.Config)
