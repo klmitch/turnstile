@@ -184,7 +184,7 @@ class TurnstileMiddleware(object):
             self.preprocessors.append(utils.import_class(preproc))
 
         # Initialize the control daemon
-        if config.Config.to_bool(self.conf['control'].get('multi', 'no'),
+        if config.Config.to_bool(self.conf['control'].get('remote', 'no'),
                                  False):
             self.control_daemon = remote.RemoteControlDaemon(self, self.conf)
         else:

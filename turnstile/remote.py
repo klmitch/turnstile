@@ -602,14 +602,15 @@ class RemoteControlDaemon(control.ControlDaemon):
 
         # Grab required configuration values
         required = {
-            'multi.host': lambda x: x,
-            'multi.port': int,
-            'multi.authkey': lambda x: x,
+            'remote.host': lambda x: x,
+            'remote.port': int,
+            'remote.authkey': lambda x: x,
             }
         values = {}
         for conf_key, xform in required.items():
             try:
-                values[conf_key[6:]] = xform(conf['control'][conf_key])
+                values[conf_key[len('remote.'):]] = \
+                    xform(conf['control'][conf_key])
             except KeyError:
                 warnings.warn("Missing value for configuration key "
                               "'control.%s'" % conf_key)

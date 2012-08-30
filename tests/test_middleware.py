@@ -272,7 +272,7 @@ class TestTurnstileMiddleware(tests.TestCase):
             'redis.host': 'example.com',
             'control.channel': 'spam',
             'control.node_name': 'node1',
-            'control.multi': 'on',
+            'control.remote': 'on',
             }
         mid = middleware.TurnstileMiddleware('app', config)
 
@@ -294,7 +294,7 @@ class TestTurnstileMiddleware(tests.TestCase):
                 'control': dict(
                     channel='spam',
                     node_name='node1',
-                    multi='on',
+                    remote='on',
                     ),
                 })
         self.assertEqual(mid.preprocessors, [preproc1, preproc2, preproc3])

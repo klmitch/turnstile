@@ -95,28 +95,6 @@ control.limits_key
   limits stored in the Redis database.  This option defaults to
   "limits".
 
-control.multi
-  If set to "on", "yes", "true", or "1", the control daemon will run
-  in a separate process.  This enables Turnstile to be compatible with
-  WSGI servers which use multiple worker processes.  Note that the
-  configuration values ``control.multi.authkey``,
-  ``control.multi.host``, and ``control.multi.port`` are required.
-
-control.multi.authkey
-  Set to an authentication key, for use when multiprocess Turnstile is
-  enabled.  Must be the value used by the invocation of
-  ``remote_daemon``.
-
-control.multi.host
-  Set to a host name or IP address, for use when multiprocess
-  Turnstile is enabled.  Must be the value used by the invocation of
-  ``remote_daemon``.
-
-control.multi.port
-  Set to a port number, for use when multiprocess Turnstile is
-  enabled.  Must be the value used by the invocation of
-  ``remote_daemon``.
-
 control.node_name
   The name of the node.  If provided, this option allows the
   specification of a recognizable name for the node.  Currently, this
@@ -132,6 +110,28 @@ control.reload_spread
   out randomly within a configured interval.  This option should be
   set to the size of the desired interval, in seconds.  If not set,
   limits will be reloaded immediately by all nodes.
+
+control.remote
+  If set to "on", "yes", "true", or "1", Turnstile will connect to a
+  remote control daemon (see the ``remote_daemon`` tool described
+  below).  This enables Turnstile to be compatible with WSGI servers
+  which use multiple worker processes.  Note that the configuration
+  values ``control.remote.authkey``, ``control.remote.host``, and
+  ``control.remote.port`` are required.
+
+control.remote.authkey
+  Set to an authentication key, for use when ``control.remote`` is
+  enabled.  Must be the value used by the invocation of
+  ``remote_daemon``.
+
+control.remote.host
+  Set to a host name or IP address, for use when ``control.remote`` is
+  enabled.  Must be the value used by the invocation of
+  ``remote_daemon``.
+
+control.remote.port
+  Set to a port number, for use when ``control.remote`` is enabled.
+  Must be the value used by the invocation of ``remote_daemon``.
 
 control.shard_hint
   Can be used to set a sharding hint which will be provided to the
@@ -236,9 +236,9 @@ Some WSGI servers cannot use Turnstile in this mode, due to using
 multiple processes (typically through use of the "multiprocessing"
 Python module).  In these circumstances, the control daemon may be
 started in its own process (see the ``remote_daemon`` tool).  Enabling
-this requires that the ``control.multi`` configuration option be
-turned on, and values provided for ``control.multi.authkey``,
-``control.multi.host``, and ``control.multi.port``.  See the
+this requires that the ``control.remote`` configuration option be
+turned on, and values provided for ``control.remote.authkey``,
+``control.remote.host``, and ``control.remote.port``.  See the
 documentation for these options for more information.
 
 The Ping Command
@@ -328,8 +328,8 @@ daemon process.  This tool requires the name of an INI-style
 configuration file; see the section on configuring the tools below for
 more information.  Note that, in addition to the required Redis
 configuration values, configuration values for the
-``control.multi.authkey``, ``control.multi.host``, and
-``control.multi.port`` options must be provided.
+``control.remote.authkey``, ``control.remote.host``, and
+``control.remotes.port`` options must be provided.
 
 A usage summary for ``remote_daemon``::
 
@@ -399,7 +399,7 @@ Each "redis.*" option recognized by the Turnstile middleware is
 understood by the tools.
 
 Additional options may be provided, such as the control channel,
-limits key, and the ``multi_daemon`` options.  The configuration file
+limits key, and the ``remote_daemon`` options.  The configuration file
 should be compatible with the alternate configuration file described
 under the ``config`` configuration option.
 
