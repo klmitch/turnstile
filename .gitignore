@@ -1,4 +1,6 @@
+/.coverage
 /build
 /dist
 /turnstile.egg-info
+*.log
 *.pyc
