@@ -17,12 +17,10 @@ import hashlib
 import logging
 import random
 import traceback
-import warnings
 
 import eventlet
 import msgpack
 
-from turnstile import limits
 from turnstile import utils
 
 

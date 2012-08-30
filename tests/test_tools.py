@@ -15,7 +15,7 @@ from turnstile import remote
 from turnstile import tools
 
 import tests
-from tests.db_fixture import FakeDatabase
+from tests import db_fixture
 
 
 class FakeLimit(tests.GenericFakeClass):
@@ -624,7 +624,7 @@ class BaseToolTest(tests.TestCase):
     def setUp(self):
         super(BaseToolTest, self).setUp()
 
-        self.fakedb = FakeDatabase()
+        self.fakedb = db_fixture.FakeDatabase()
         self.stderr = StringIO.StringIO()
 
         class FakeConfig(config.Config):
@@ -670,8 +670,9 @@ class TestToolSetupLimits(BaseToolTest):
             self.cmds.append((command, params))
 
         self.stubs.Set(tools, 'parse_limit_node', fake_parse_limit_node)
-        self.stubs.Set(FakeDatabase, 'limit_update', fake_limit_update)
-        self.stubs.Set(FakeDatabase, 'command', fake_command)
+        self.stubs.Set(db_fixture.FakeDatabase, 'limit_update',
+                       fake_limit_update)
+        self.stubs.Set(db_fixture.FakeDatabase, 'command', fake_command)
 
     def test_basic(self):
         limits_file = StringIO.StringIO("""<limits>

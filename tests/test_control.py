@@ -1,12 +1,9 @@
 import hashlib
-from multiprocessing import managers
 import random
-import warnings
 
 import eventlet
 import msgpack
 
-from turnstile import config
 from turnstile import control
 from turnstile import limits
 
