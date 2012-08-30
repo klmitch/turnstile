@@ -15,19 +15,22 @@ Installing Turnstile
 Turnstile can be easily installed like many Python packages, using
 `PIP`_::
 
- pip install turnstile
+    pip install turnstile
 
-You can install the dependencies required by Turnstile by
-issuing the following command::
+You can install the dependencies required by Turnstile by issuing the
+following command::
 
- pip install -r .requires
+    pip install -r .requires
 
 From within your Turnstile source directory.
 
 If you would like to run the tests, you can install the additional
 test dependencies in the same way::
 
- pip install -r .test-requires
+    pip install -r .test-requires
+
+Note that the test suite is currently written to work with Python 2.7,
+even though Turnstile itself should work with Python 2.6.
 
 Adding and Configuring Turnstile
 ================================
@@ -63,14 +66,14 @@ config
   segment of the configuration option name.  That is, the
   ``redis.host`` option would be set as follows::
 
-    [redis]
-    host = <your Redis database host name or IP>
+      [redis]
+      host = <your Redis database host name or IP>
 
   Configuration options which have no prefix are grouped under the
   ``[turnstile]`` section of the file, as follows::
 
-    [turnstile]
-    status = 404 Not Found
+      [turnstile]
+      status = 404 Not Found
 
   Note that specifying the ``config`` option in the ``[turnstile]``
   section will have no effect; it is not possible to cause another
@@ -139,14 +142,14 @@ control.shard_hint
   not used by the default Redis ``Connection`` class.
 
 preprocess
-  Contains a list of functions, specified as "module:function" pairs
-  separated by spaces.  During each request, each preprocessor will be
-  called in turn, with the middleware object (from which can be
-  obtained the database handle, as well as the configuration as a
-  two-layer dictionary) and the request environment as arguments.
-  Note that any exceptions thrown by the preprocessors will not be
-  caught, and request processing will be halted; this will likely
-  result in a 500 error being returned to the user.
+  Contains a list of preprocessor functions, specified as
+  "module:function" pairs separated by spaces.  During each request,
+  each preprocessor will be called in turn, with the middleware object
+  (from which can be obtained the database handle, as well as the
+  configuration) and the request environment as arguments.  Note that
+  any exceptions thrown by the preprocessors will not be caught, and
+  request processing will be halted; this will likely result in a 500
+  error being returned to the user.
 
 redis.connection_pool
   Identifies the connection pool class to use.  If not provided,
@@ -171,7 +174,7 @@ redis.connection_pool.*
   Any other configuration value provided in the
   ``redis.connection_pool.`` hierarchy will be passed as keyword
   arguments to the configured connection pool class.  Note that the
-  values passed will be strings.
+  values will be passed as strings.
 
 redis.db
   Identifies the specific sub-database of the Redis database to be
@@ -241,6 +244,13 @@ turned on, and values provided for ``control.remote.authkey``,
 ``control.remote.host``, and ``control.remote.port``.  See the
 documentation for these options for more information.
 
+It is possible to configure the listening thread of the control daemon
+to use alternate configuration for connecting to the Redis database.
+The defaults will be drawn from the ``[redis]`` section of the
+configuration, but by specifying ``redis.*`` options in the
+``[control]`` section of the configuration, specific values may be
+overridden.
+
 The Ping Command
 ----------------
 
@@ -260,13 +270,16 @@ responding and not too heavily loaded.
 a "ping" command containing additional data such as a timestamp will
 be "pong::<timestamp>".)
 
+Note that, at present, no tool exists for sending pings or receiving
+pongs.
+
 The Reload Command
 ------------------
 
 The "reload" command is the real reason for the existence of the
 control daemon.  This command causes the current set of limits to be
-loaded from the database and installed in the middleware.  (This
-operation is done in a thread-safe manner.)
+reloaded from the database and presented to the middleware for
+enforcement.
 
 The simplest form of the reload command is simply, "reload".  If the
 ``control.reload_spread`` configuration option was set, the reload
@@ -293,9 +306,12 @@ Turnstile Tools
 The limits are stored in the Redis database using a sorted set, and
 they are encoded using Msgpack.  (Although the Msgpack format is not
 human-readable, it is very space and time efficient, which is why it
-was chosen for this application.)  This makes manual management of
-them more difficult, and so Turnstile ships with two tools to make
-management of the rate limiting configuration easier.
+was chosen for this application.)  This makes manual management of the
+limits configuration more difficult, and so Turnstile ships with two
+tools to make management of the rate limiting configuration easier.  A
+third tool starts up a remote control daemon, for use when Turnstile
+is used with applications that run multiple processes, such as the
+``nova-api`` component of OpenStack.
 
 The ``dump_limits`` Tool
 ------------------------
@@ -307,18 +323,18 @@ tools below for more information.
 
 A usage summary for ``dump_limits``::
 
-  usage: dump_limits [-h] [--debug] config limits_file
+    usage: dump_limits [-h] [--debug] config limits_file
 
-  Dump the current limits from the Redis database.
+    Dump the current limits from the Redis database.
 
-  positional arguments:
-    config       Name of the configuration file, for connecting to the Redis
-                 database.
-    limits_file  Name of the XML file that the limits will be dumped to.
+    positional arguments:
+      config       Name of the configuration file, for connecting to the Redis
+                   database.
+      limits_file  Name of the XML file that the limits will be dumped to.
 
-  optional arguments:
-    -h, --help   show this help message and exit
-    --debug, -d  Run the tool in debug mode.
+    optional arguments:
+      -h, --help   show this help message and exit
+      --debug, -d  Run the tool in debug mode.
 
 The ``remote_daemon`` Tool
 -------------------------
@@ -333,64 +349,65 @@ configuration values, configuration values for the
 
 A usage summary for ``remote_daemon``::
 
-  usage: remote_daemon [-h] [--log-config LOGGING] [--debug] config
+    usage: remote_daemon [-h] [--log-config LOGGING] [--debug] config
 
-  Run the external control daemon.
+    Run the external control daemon.
 
-  positional arguments:
-    config                Name of the configuration file.
+    positional arguments:
+      config                Name of the configuration file.
 
-  optional arguments:
-    -h, --help            show this help message and exit
-    --log-config LOGGING, -l LOGGING
-                          Specify a logging configuration file.
-    --debug, -d           Run the tool in debug mode.
+    optional arguments:
+      -h, --help            show this help message and exit
+      --log-config LOGGING, -l LOGGING
+                            Specify a logging configuration file.
+      --debug, -d           Run the tool in debug mode.
 
 The ``setup_limits`` Tool
 -------------------------
 
 The ``setup_limits`` tool may be used to read an XML file (such as
 that produced by ``dump_limits``) and load the rate limiting
-configuration into the Redis database.  This tools also requires the
-name of an INI-style configuration file; see the section on
-configuring the tools below for more information.
+configuration into the Redis database.  This tool requires the name of
+an INI-style configuration file; see the section on configuring the
+tools below for more information.
 
 A usage summary for ``setup_limits``::
 
-  usage: setup_limits [-h] [--debug] [--dryrun] [--noreload]
-                      [--reload-immediate] [--reload-spread SECS]
-                      config limits_file
+    usage: setup_limits [-h] [--debug] [--dryrun] [--noreload]
+                        [--reload-immediate] [--reload-spread SECS]
+                        config limits_file
 
-  Set up or update limits in the Redis database.
+    Set up or update limits in the Redis database.
 
-  positional arguments:
-    config                Name of the configuration file, for connecting to the
-                          Redis database.
-    limits_file           Name of the XML file describing the limits to
-                          configure.
+    positional arguments:
+      config                Name of the configuration file, for connecting to the
+                            Redis database.
+      limits_file           Name of the XML file describing the limits to
+                            configure.
 
-  optional arguments:
-    -h, --help            show this help message and exit
-    --debug, -d           Run the tool in debug mode.
-    --dryrun, --dry_run, --dry-run, -n
-                          Perform a dry run; inhibits loading data into the
-                          database.
-    --noreload, -R        Inhibit issuing a reload command.
-    --reload-immediate, -r
-                          Cause all nodes to immediately reload the limits
-                          configuration.
-    --reload-spread SECS, -s SECS
-                          Cause all nodes to reload the limits configuration
-                          over the specified number of seconds.
+    optional arguments:
+      -h, --help            show this help message and exit
+      --debug, -d           Run the tool in debug mode.
+      --dryrun, --dry_run, --dry-run, -n
+                            Perform a dry run; inhibits loading data into the
+                            database.
+      --noreload, -R        Inhibit issuing a reload command.
+      --reload-immediate, -r
+                            Cause all nodes to immediately reload the limits
+                            configuration.
+      --reload-spread SECS, -s SECS
+                            Cause all nodes to reload the limits configuration
+                            over the specified number of seconds.
 
 Configuring the Tools
 ---------------------
 
-Both ``dump_limits`` and ``setup_limits`` require an INI-style
-configuration file, which specifies how to connect to the Redis
-database.  This file should contain the section "[redis]" and
-should be populated with the same "redis.*" options as the PasteDeploy
-configuration file, minus the "redis." prefix.  For example::
+The tools ``dump_limits``, ``remote_daemon``, and ``setup_limits``
+require an INI-style configuration file, which specifies how to
+connect to the Redis database.  This file should contain the section
+"[redis]" and should be populated with the same "redis.*" options as
+the PasteDeploy configuration file, minus the "redis." prefix.  For
+example::
 
     [redis]
     host = <your Redis database host name or IP>
@@ -401,34 +418,35 @@ understood by the tools.
 Additional options may be provided, such as the control channel,
 limits key, and the ``remote_daemon`` options.  The configuration file
 should be compatible with the alternate configuration file described
-under the ``config`` configuration option.
+under the ``config`` configuration option for the Turnstile
+middleware.
 
 Rate Limit XML
 --------------
 
 The XML file used for expressing rate limit configuration is
 relatively straightforward, or at least as straightforward as XML can
-be.  The top-level element is "<limits>"; this should contain a
-sequence of "<limit>" elements, each containing a number of "<attr>"
-elements.  The specific attributes available for any given limit class
-depend on the exact class, but that information is documented in the
-``attrs`` attribute of the limit class.  (This information is suitable
-for introspection.)
+be.  The top-level element is ``<limits>``; this should contain a
+sequence of ``<limit>`` elements, each containing a number of
+``<attr>`` elements.  The specific attributes available for any given
+limit class depend on the exact class, but that information is
+documented in the ``attrs`` attribute of the limit class.  (This
+information is suitable for introspection.)
 
-The "<limit>" element has one XML attribute which must be specified:
-the "class" attribute, which must be set to a "module:class" string
-identifying the desired limit class.  The "<attr>" element also has a
-single XML attribute which must be set: "name", which identifies the
-name of the Limit attribute.  The contents of the "<attr>" element
-identify the value for the named attribute.
+The ``<limit>`` element has one XML attribute which must be specified:
+the ``class`` attribute, which must be set to a "module:class" string
+identifying the desired limit class.  The ``<attr>`` element also has
+a single XML attribute which must be set: ``name``, which identifies
+the name of the Limit attribute.  The contents of the ``<attr>``
+element identify the value for the named attribute.
 
-Some limit attributes are lists; for these attributes, the "<attr>"
-element must contain one or more "<value>" elements, whose contents
+Some limit attributes are lists; for these attributes, the ``<attr>``
+element must contain one or more ``<value>`` elements, whose contents
 identify a single item in the attribute list.  Other limit attributes
-are dictionaries; for these attributes, again the "<attr>" element
-must contain one or more "<value>" elements, but now those "<value>"
-elements must have the XML attribute "key" set to the dictionary key
-corresponding to that value.
+are dictionaries; for these attributes, again the ``<attr>`` element
+must contain one or more ``<value>`` elements, but now those
+``<value>`` elements must have the XML attribute ``key`` set to the
+dictionary key corresponding to that value.
 
 As an example, consider the following limits configuration::
 
@@ -447,11 +465,12 @@ As an example, consider the following limits configuration::
       </limit>
     </limits>
 
-In this example, GET access to "/page/{pageid}" is rate-limited to 10
-per second.  The ``requirements`` attribute may be used to specify
+In this example, GET access to ``/page/{pageid}`` is rate-limited to
+10 per second.  The ``requirements`` attribute may be used to specify
 regular expressions to tune the matching of URI components; in this
-case, the "{pageid}" value must be composed of 1 or more digits.  The
-limit class used is the basic ``turnstile.limits:Limit`` limit class.
+case, the ``{pageid}`` value must be composed of 1 or more digits.
+The limit class used is the basic ``turnstile.limits:Limit`` limit
+class.
 
 Custom Limit Classes
 ====================
@@ -462,33 +481,33 @@ including the specific machinery which allows limits to be stored into
 the Redis database.  Most limit classes only need to worry about the
 ``attrs`` class attribute and the ``filter()`` method, although the
 ``route()`` and ``format()`` methods may also be hooked.  For more
-information about these methods, see the documentation provided for
-their default implementations in ``turnstile.limits:Limit``.
+information about these methods, see the docstrings provided for their
+default implementations in ``turnstile.limits:Limit``.
 
 Accessing the Turnstile Configuration
 =====================================
 
 The Turnstile configuration is available to preprocessors and to the
 Limit classes.  For preprocessors, it is available directly from the
-middleware object (the first passed parameter) via the 'config'
-attribute.  (The database handle is also available via the 'db'
+middleware object (the first passed parameter) via the ``config``
+attribute.  (The database handle is also available via the ``db``
 attribute, should access to the database be required.)  For the
 ``filter()`` method of the Limit classes, the configuration is
-available in the request environment under the "turnstile.conf" key.
+available in the request environment under the ``turnstile.conf`` key.
 
 The Turnstile configuration is represented as a
 ``turnstile.config:Config`` object.  Configuration keys that do not
-contain a '.' are available as attributes of this object; for example,
+contain a "." are available as attributes of this object; for example,
 to obtain the configured status value, assuming the Turnstile
-configuration is available in the "config" variable, the correct code
+configuration is available in the ``conf`` variable, the correct code
 would be::
 
-    status = config.status
+    status = conf.status
 
-For those configuration keys which do contain a '.', the part of the
-name to the left of the first '.' becomes a dictionary key, and the
+For those configuration keys which do contain a ".", the part of the
+name to the left of the first "." becomes a dictionary key, and the
 remainder of the name will be a second key.  For example, to access
-the value of the "redis.connection_pool.connection_class" variable,
+the value of the ``redis.connection_pool.connection_class`` variable,
 the correct code would be::
 
     connection_class = config['redis']['connection_pool.connection_class']
@@ -496,17 +515,17 @@ the correct code would be::
 All values in the configuration are stored as strings.  Configuration
 values do not need to be pre-declared in any way; Turnstile ignores
 (but maintains) configuration values that it does not use, making
-these values available for use by preprocessors and Limit classes.
+these values available for use by preprocessors and Limit subclasses.
 
 For convenience, the ``turnstile.config:Config`` class offers a static
 method ``to_bool()`` which can convert a string value to a boolean
 value.  The strings "t", "true", "on", "y", and "yes" are all
-recognized as a boolean True value, as are numeric strings which
+recognized as a boolean ``True`` value, as are numeric strings which
 evaluate to non-zero values.  The strings "f", "false", "off", "n",
-and "no" are all recognized as a boolean False value, as are numeric
-strings which evaluate to zero values.  Any other string value will
-cause ``to_bool()`` to raise a ValueError, unless the ``do_raise``
-argument is given as False, in which case ``to_bool()`` will return a
-boolean False value.
+and "no" are all recognized as a boolean ``False`` value, as are
+numeric strings which evaluate to zero values.  Any other string value
+will cause ``to_bool()`` to raise a ``ValueError``, unless the
+``do_raise`` argument is given as ``False``, in which case
+``to_bool()`` will return a boolean ``False`` value.
 
 .. _PIP link: http://www.pip-installer.org/en/latest/index.html

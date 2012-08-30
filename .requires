@@ -1,4 +1,6 @@
+argparse
 eventlet
+lxml
 metatools
 msgpack-python
 redis
