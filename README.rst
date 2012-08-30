@@ -105,17 +105,17 @@ control.multi
 control.multi.authkey
   Set to an authentication key, for use when multiprocess Turnstile is
   enabled.  Must be the value used by the invocation of
-  ``multi_daemon``.
+  ``remote_daemon``.
 
 control.multi.host
   Set to a host name or IP address, for use when multiprocess
   Turnstile is enabled.  Must be the value used by the invocation of
-  ``multi_daemon``.
+  ``remote_daemon``.
 
 control.multi.port
   Set to a port number, for use when multiprocess Turnstile is
   enabled.  Must be the value used by the invocation of
-  ``multi_daemon``.
+  ``remote_daemon``.
 
 control.node_name
   The name of the node.  If provided, this option allows the
@@ -235,7 +235,7 @@ recognized: ping and reload.
 Some WSGI servers cannot use Turnstile in this mode, due to using
 multiple processes (typically through use of the "multiprocessing"
 Python module).  In these circumstances, the control daemon may be
-started in its own process (see the ``multi_daemon`` tool).  Enabling
+started in its own process (see the ``remote_daemon`` tool).  Enabling
 this requires that the ``control.multi`` configuration option be
 turned on, and values provided for ``control.multi.authkey``,
 ``control.multi.host``, and ``control.multi.port``.  See the
@@ -320,10 +320,10 @@ A usage summary for ``dump_limits``::
     -h, --help   show this help message and exit
     --debug, -d  Run the tool in debug mode.
 
-The ``multi_daemon`` Tool
+The ``remote_daemon`` Tool
 -------------------------
 
-The ``multi_daemon`` tool may be used to start a separate control
+The ``remote_daemon`` tool may be used to start a separate control
 daemon process.  This tool requires the name of an INI-style
 configuration file; see the section on configuring the tools below for
 more information.  Note that, in addition to the required Redis
@@ -331,18 +331,20 @@ configuration values, configuration values for the
 ``control.multi.authkey``, ``control.multi.host``, and
 ``control.multi.port`` options must be provided.
 
-A usage summary for ``multi_daemon``::
+A usage summary for ``remote_daemon``::
 
-  usage: multi_daemon [-h] [--debug] config
+  usage: remote_daemon [-h] [--log-config LOGGING] [--debug] config
 
   Run the external control daemon.
 
   positional arguments:
-    config       Name of the configuration file.
+    config                Name of the configuration file.
 
   optional arguments:
-    -h, --help   show this help message and exit
-    --debug, -d  Run the tool in debug mode.
+    -h, --help            show this help message and exit
+    --log-config LOGGING, -l LOGGING
+                          Specify a logging configuration file.
+    --debug, -d           Run the tool in debug mode.
 
 The ``setup_limits`` Tool
 -------------------------

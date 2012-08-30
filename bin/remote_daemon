@@ -38,4 +38,4 @@ from turnstile import tools
 
 
 if __name__ == '__main__':
-    tools.multi_daemon()
+    tools.remote_daemon()

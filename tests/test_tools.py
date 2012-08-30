@@ -562,11 +562,11 @@ class TestConsoleDumpLimits(ConsoleScriptsTestCase):
                          (('config', 'limits.xml', True), {}))
 
 
-class TestConsoleMultiDaemon(ConsoleScriptsTestCase):
-    subroutine = staticmethod(tools.multi_daemon)
+class TestConsoleRemoteDaemon(ConsoleScriptsTestCase):
+    subroutine = staticmethod(tools.remote_daemon)
 
     def setUp(self):
-        super(TestConsoleMultiDaemon, self).setUp()
+        super(TestConsoleRemoteDaemon, self).setUp()
 
         self.logging_config = None
         self.logging_basic = False
@@ -882,9 +882,9 @@ Dumping limit index 2: {'name': 'limit3'}
 Dumping limits to file """))
 
 
-class TestToolMultiDaemon(BaseToolTest):
+class TestToolRemoteDaemon(BaseToolTest):
     def setUp(self):
-        super(TestToolMultiDaemon, self).setUp()
+        super(TestToolRemoteDaemon, self).setUp()
 
         self.served = False
         self.daemon = None
@@ -906,7 +906,7 @@ class TestToolMultiDaemon(BaseToolTest):
 
     def test_basic(self):
         with warnings.catch_warnings(record=True) as w:
-            tools._multi_daemon('config.file')
+            tools._remote_daemon('config.file')
 
             self.assertEqual(len(w), 0)
 

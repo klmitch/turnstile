@@ -32,7 +32,7 @@ setup(
         'console_scripts': [
             'setup_limits = turnstile.tools:setup_limits',
             'dump_limits = turnstile.tools:dump_limits',
-            'multi_daemon = turnstile.tools:multi_daemon',
+            'remote_daemon = turnstile.tools:remote_daemon',
             ],
         },
     install_requires=[

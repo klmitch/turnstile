@@ -382,7 +382,7 @@ def dump_limits():
         return str(exc)
 
 
-def _multi_daemon(conf_file):
+def _remote_daemon(conf_file):
     """
     Run the external control daemon as configured.
 
@@ -395,7 +395,7 @@ def _multi_daemon(conf_file):
     daemon.serve()
 
 
-def multi_daemon():
+def remote_daemon():
     """
     Console script entry point for running the external control
     daemon.
@@ -427,7 +427,7 @@ def multi_daemon():
         logging.basicConfig()
 
     try:
-        _multi_daemon(args.config)
+        _remote_daemon(args.config)
     except Exception as exc:
         if args.debug:
             raise
