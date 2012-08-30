@@ -243,4 +243,4 @@ def limits_hydrate(db, lims):
                  database.
     """
 
-    return [limits.Limit.hydrate(db, msgpack.loads(lim)) for lim in lims]
+    return [limits.Limit.hydrate(db, lim) for lim in lims]

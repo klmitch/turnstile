@@ -71,7 +71,8 @@ class TestLimitData(tests.TestCase):
         # Set the test data...
         ld.set_limits(self.test_data)
 
-        self.assertEqual(ld.limit_data, self.test_data)
+        self.assertEqual(ld.limit_data,
+                         [dict(limit=lim) for lim in self.test_data])
         self.assertEqual(ld.limit_sum, self.test_chksum)
         self.assertEqual(ld.limit_lock.balance, 1)
 

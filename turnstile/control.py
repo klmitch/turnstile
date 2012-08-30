@@ -20,6 +20,7 @@ import traceback
 import warnings
 
 import eventlet
+import msgpack
 
 from turnstile import limits
 from turnstile import utils
@@ -77,7 +78,7 @@ class LimitData(object):
             if self.limit_sum == new_sum:
                 # No changes
                 return
-            self.limit_data = limits[:]
+            self.limit_data = [msgpack.loads(lim) for lim in limits]
             self.limit_sum = new_sum
 
     def get_limits(self, limit_sum=None):
