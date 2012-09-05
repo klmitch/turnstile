@@ -337,7 +337,7 @@ A usage summary for ``dump_limits``::
       --debug, -d  Run the tool in debug mode.
 
 The ``remote_daemon`` Tool
--------------------------
+--------------------------
 
 The ``remote_daemon`` tool may be used to start a separate control
 daemon process.  This tool requires the name of an INI-style
@@ -528,4 +528,4 @@ will cause ``to_bool()`` to raise a ``ValueError``, unless the
 ``do_raise`` argument is given as ``False``, in which case
 ``to_bool()`` will return a boolean ``False`` value.
 
-.. _PIP link: http://www.pip-installer.org/en/latest/index.html
+.. _PIP: http://www.pip-installer.org/en/latest/index.html
