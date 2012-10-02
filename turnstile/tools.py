@@ -29,6 +29,30 @@ from turnstile import remote
 from turnstile import utils
 
 
+def parse_config(conf_file):
+    """
+    Provide backwards-compatibility.
+
+    Previous versions of Turnstile had parse_config(), which would
+    parse a Turnstile configuration file and return a database handle,
+    the limits key, and the control channel, as a tuple.  As it turns
+    out, some external tools referenced this parse_config() function.
+    This function, unused by Turnstile itself, provides backwards
+    compatibility for this functionality, using the new config.Config
+    class.
+    """
+
+    # Read the configuration file
+    conf = config.Config(conf_file=conf_file)
+
+    # Get a database handle and the limits key and control channel
+    db = conf.get_database()
+    limits_key = conf['control'].get('limits_key', 'limits')
+    control_channel = conf['control'].get('channel', 'control')
+
+    return db, limits_key, control_channel
+
+
 def parse_limit_node(db, idx, limit):
     """
     Given an XML node describing a limit, return a Limit object.
