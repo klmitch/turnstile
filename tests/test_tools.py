@@ -86,6 +86,46 @@ class FakeArgumentParser(object):
         return FakeNamespace(self._params)
 
 
+class FakeConfig(object):
+    def __init__(self, control):
+        self._control = control
+        self._called = []
+
+    def get_database(self):
+        self._called.append(('get_database',))
+        return 'database'
+
+    def __getitem__(self, name):
+        if name != 'control':
+            raise KeyError(name)
+        return self._control
+
+
+class TestParseConfig(tests.TestCase):
+    def setUp(self):
+        super(TestParseConfig, self).setUp()
+
+        self.control = {}
+
+        def get_config(**kwargs):
+            self.assertEqual(kwargs, dict(conf_file='conf_file'))
+            return FakeConfig(self.control)
+
+        self.stubs.Set(config, 'Config', get_config)
+
+    def test_parse_config(self):
+        result = tools.parse_config('conf_file')
+
+        self.assertEqual(result, ('database', 'limits', 'control'))
+
+    def test_parse_config_alt(self):
+        self.control = dict(limits_key='alt_limits', channel='alt_control')
+
+        result = tools.parse_config('conf_file')
+
+        self.assertEqual(result, ('database', 'alt_limits', 'alt_control'))
+
+
 class TestParseLimitNode(tests.TestCase):
     imports = {
         'FakeLimit': FakeLimit,
