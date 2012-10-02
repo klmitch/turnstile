@@ -604,7 +604,7 @@ class TestControlDaemon(tests.TestCase):
 
         self.assertEqual(db._actions, [('zrange', 'limits', 0, -1)])
         self.assertEqual(daemon.limits.limit_data, [dict(limit='limit1'),
-                                                     dict(limit='limit2')])
+                                                    dict(limit='limit2')])
         self.assertEqual(daemon.limits.limit_sum, 2)
         self.assertEqual(daemon.pending.balance, 1)
 
@@ -623,7 +623,7 @@ class TestControlDaemon(tests.TestCase):
 
         self.assertEqual(db._actions, [('zrange', 'alternate', 0, -1)])
         self.assertEqual(daemon.limits.limit_data, [dict(limit='limit1'),
-                                                     dict(limit='limit2')])
+                                                    dict(limit='limit2')])
         self.assertEqual(daemon.limits.limit_sum, 2)
         self.assertEqual(daemon.pending.balance, 1)
 
