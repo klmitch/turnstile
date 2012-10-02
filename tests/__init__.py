@@ -1,7 +1,7 @@
 import logging
-import unittest
 
 import stubout
+import unittest2
 
 from turnstile import config
 from turnstile import utils
@@ -37,7 +37,7 @@ LOG.setLevel(logging.DEBUG)
 LOG.propagate = False
 
 
-class TestCase(unittest.TestCase):
+class TestCase(unittest2.TestCase):
     imports = {}
 
     def setUp(self):
