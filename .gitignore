@@ -2,6 +2,7 @@
 /.coverage
 /cov_html
 /dist
+/.tox
 /turnstile.egg-info
 *.log
 *.pyc
