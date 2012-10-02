@@ -46,6 +46,7 @@ setup(
         ],
     tests_require=[
         'mox',
+        'nose',
         'unittest2>=0.5.1',
         ],
     )
