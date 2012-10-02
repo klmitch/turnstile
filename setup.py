@@ -38,7 +38,7 @@ setup(
     install_requires=[
         'argparse',
         'eventlet',
-        'lxml',
+        'lxml>=2.3',
         'metatools',
         'msgpack-python',
         'redis',
