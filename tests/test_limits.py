@@ -141,6 +141,30 @@ class TestBucket(tests.TestCase):
         self.assertEqual(bucket.next, 1000005.0)
         self.assertEqual(bucket.level, 95.0)
 
+    def test_delay_overlimit_withnow(self):
+        self.stubs.Set(time, 'time', lambda: 1000000.0)
+
+        limit = FakeLimit(cost=10.0, unit_value=100)
+        bucket = limits.Bucket('db', limit, 'key', last=1000000.0, level=100.0)
+        result = bucket.delay({}, now=1000005.0)
+
+        self.assertEqual(result, 5.0)
+        self.assertEqual(bucket.last, 1000005.0)
+        self.assertEqual(bucket.next, 1000010.0)
+        self.assertEqual(bucket.level, 95.0)
+
+    def test_delay_overlimit_withnow_timetravel(self):
+        self.stubs.Set(time, 'time', lambda: 1000000.0)
+
+        limit = FakeLimit(cost=10.0, unit_value=100)
+        bucket = limits.Bucket('db', limit, 'key', last=1000010.0, level=100.0)
+        result = bucket.delay({}, now=1000005.0)
+
+        self.assertEqual(result, 10.0)
+        self.assertEqual(bucket.last, 1000010.0)
+        self.assertEqual(bucket.next, 1000020.0)
+        self.assertEqual(bucket.level, 100.0)
+
     def test_delay_undereps(self):
         self.stubs.Set(time, 'time', lambda: 1000000.0)
 

@@ -143,14 +143,17 @@ class Bucket(object):
 
         return result
 
-    def delay(self, params):
+    def delay(self, params, now=None):
         """Determine delay until next request."""
 
-        now = time.time()
+        if now is None:
+            now = time.time()
 
         # Initialize last...
         if not self.last:
             self.last = now
+        elif now < self.last:
+            now = self.last
 
         # How much has leaked out?
         leaked = now - self.last
