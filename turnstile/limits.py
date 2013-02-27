@@ -587,7 +587,7 @@ class Limit(object):
         key.
 
         Note that the Turnstile configuration is available in the
-        environment under the "turnstile.config" key.
+        environment under the "turnstile.conf" key.
         """
 
         pass
