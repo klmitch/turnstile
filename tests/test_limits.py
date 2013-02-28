@@ -8,24 +8,122 @@ from turnstile import limits
 import tests
 
 
-class TestEncodeDecode(tests.TestCase):
-    def test_encode(self):
-        self.assertEqual(limits._encode('this is a test'),
+class TestBucketKey(tests.TestCase):
+    def test_part_encode(self):
+        self.assertEqual(limits.BucketKey._encode('this is a test'),
                          '"this is a test"')
-        self.assertEqual(limits._encode(123), '123')
-        self.assertEqual(limits._encode("don't / your %s."),
+        self.assertEqual(limits.BucketKey._encode(123), '123')
+        self.assertEqual(limits.BucketKey._encode("don't / your %s."),
                          '"don\'t %2f your %25s."')
-        self.assertEqual(limits._encode('you said "hello".'),
+        self.assertEqual(limits.BucketKey._encode('you said "hello".'),
                          '"you said \\"hello\\"."')
 
-    def test_decode(self):
-        self.assertEqual(limits._decode('"this is a test"'),
+    def test_part_decode(self):
+        self.assertEqual(limits.BucketKey._decode('"this is a test"'),
                          'this is a test')
-        self.assertEqual(limits._decode('123'), 123)
-        self.assertEqual(limits._decode('"don\'t %2f your %25s."'),
+        self.assertEqual(limits.BucketKey._decode('123'), 123)
+        self.assertEqual(limits.BucketKey._decode('"don\'t %2f your %25s."'),
                          "don't / your %s.")
-        self.assertEqual(limits._decode('"you said \\"hello\\"."'),
+        self.assertEqual(limits.BucketKey._decode('"you said \\"hello\\"."'),
                          'you said "hello".')
+
+    def test_init_noversion(self):
+        self.assertRaises(ValueError, limits.BucketKey, 'fake_uuid', {},
+                          version=-1)
+
+    def test_key_version1_noparams(self):
+        key = limits.BucketKey('fake_uuid', {}, version=1)
+
+        self.assertEqual(key.uuid, 'fake_uuid')
+        self.assertEqual(key.params, {})
+        self.assertEqual(key.version, 1)
+        self.assertEqual(key._cache, None)
+
+        expected = 'bucket:fake_uuid'
+
+        self.assertEqual(str(key), expected)
+        self.assertEqual(key._cache, expected)
+
+    def test_key_version1_withparams(self):
+        key = limits.BucketKey('fake_uuid', dict(a=1, b="2"), version=1)
+
+        self.assertEqual(key.uuid, 'fake_uuid')
+        self.assertEqual(key.params, dict(a=1, b="2"))
+        self.assertEqual(key.version, 1)
+        self.assertEqual(key._cache, None)
+
+        expected = 'bucket:fake_uuid/a=1/b="2"'
+
+        self.assertEqual(str(key), expected)
+        self.assertEqual(key._cache, expected)
+
+    def test_key_version2_noparams(self):
+        key = limits.BucketKey('fake_uuid', {})
+
+        self.assertEqual(key.uuid, 'fake_uuid')
+        self.assertEqual(key.params, {})
+        self.assertEqual(key.version, 2)
+        self.assertEqual(key._cache, None)
+
+        expected = 'bucket_v2:fake_uuid'
+
+        self.assertEqual(str(key), expected)
+        self.assertEqual(key._cache, expected)
+
+    def test_key_version2_withparams(self):
+        key = limits.BucketKey('fake_uuid', dict(a=1, b="2"))
+
+        self.assertEqual(key.uuid, 'fake_uuid')
+        self.assertEqual(key.params, dict(a=1, b="2"))
+        self.assertEqual(key.version, 2)
+        self.assertEqual(key._cache, None)
+
+        expected = 'bucket_v2:fake_uuid/a=1/b="2"'
+
+        self.assertEqual(str(key), expected)
+        self.assertEqual(key._cache, expected)
+
+    def test_decode_unprefixed(self):
+        self.assertRaises(ValueError, limits.BucketKey.decode, 'unprefixed')
+
+    def test_decode_badversion(self):
+        self.assertRaises(ValueError, limits.BucketKey.decode, 'bad:fake_uuid')
+
+    def test_decode_version1_noparams(self):
+        key = limits.BucketKey.decode('bucket:fake_uuid')
+
+        self.assertEqual(key.uuid, 'fake_uuid')
+        self.assertEqual(key.params, {})
+        self.assertEqual(key.version, 1)
+
+    def test_decode_version1_withparams(self):
+        key = limits.BucketKey.decode('bucket:fake_uuid/a=1/b="2"')
+
+        self.assertEqual(key.uuid, 'fake_uuid')
+        self.assertEqual(key.params, dict(a=1, b="2"))
+        self.assertEqual(key.version, 1)
+
+    def test_decode_version1_badparams(self):
+        self.assertRaises(ValueError, limits.BucketKey.decode,
+                          'bucket:fake_uuid/a=1/b="2"/c')
+
+    def test_decode_version2_noparams(self):
+        key = limits.BucketKey.decode('bucket_v2:fake_uuid')
+
+        self.assertEqual(key.uuid, 'fake_uuid')
+        self.assertEqual(key.params, {})
+        self.assertEqual(key.version, 2)
+
+    def test_decode_version2_withparams(self):
+        key = limits.BucketKey.decode('bucket_v2:fake_uuid/a=1/b="2"')
+
+        self.assertEqual(key.uuid, 'fake_uuid')
+        self.assertEqual(key.params, dict(a=1, b="2"))
+        self.assertEqual(key.version, 2)
+
+    def test_decode_version2_badparams(self):
+        self.assertRaises(ValueError, limits.BucketKey.decode,
+                          'bucket_v2:fake_uuid/a=1/b="2"/c')
 
 
 class TestUnits(tests.TestCase):

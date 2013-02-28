@@ -25,26 +25,126 @@ import msgpack
 from turnstile import utils
 
 
-# %-encode '/' and '%'
-_ENC_RE = re.compile('[/%]')
+class BucketKey(object):
+    """
+    Represent a bucket key.  This class provides functionality to
+    serialize parameters into a bucket key, and to deserialize a
+    bucket key into the original parameters used to build it.  The key
+    version, associated limit UUID, and the request parameters are all
+    encoded into a bucket key.
 
+    Instances of this class have three attributes:
 
-def _encode(value):
-    """Encode the given value, taking care of '%' and '/'."""
+      uuid
+        The UUID of the corresponding limit.
 
-    value = json.dumps(value)
-    return _ENC_RE.sub(lambda x: '%%%2x' % ord(x.group(0)), value)
+      params
+        A dictionary of the request parameters corresponding to the
+        bucket.
 
+      version
+        An integer specifying the version of the bucket key.  At
+        present, only two versions (1 and 2) are available.  Version 1
+        buckets are stored as a msgpack'd dictionary in a string field
+        in the Redis database, while version 2 buckets are stored as a
+        list of msgpack'd dictionaries.
 
-# %-decode a string
-_DEC_RE = re.compile('%([a-fA-F0-9]{2})')
+    To obtain the string key, use str() on instances of this class.
+    """
 
+    # Map prefixes to versions and vice versa
+    _prefix_to_version = dict(bucket=1, bucket_v2=2)
+    _version_to_prefix = dict((v, k) for k, v in _prefix_to_version.items())
 
-def _decode(value):
-    """Decode the given value, reverting '%'-encoded groups."""
+    # Regular expressions for encoding and decoding
+    _ENC_RE = re.compile('[/%]')
+    _DEC_RE = re.compile('%([a-fA-F0-9]{2})')
 
-    value = _DEC_RE.sub(lambda x: '%c' % int(x.group(1), 16), value)
-    return json.loads(value)
+    @classmethod
+    def _encode(cls, value):
+        """Encode the given value, taking care of '%' and '/'."""
+
+        value = json.dumps(value)
+        return cls._ENC_RE.sub(lambda x: '%%%2x' % ord(x.group(0)), value)
+
+    @classmethod
+    def _decode(cls, value):
+        """Decode the given value, reverting '%'-encoded groups."""
+
+        value = cls._DEC_RE.sub(lambda x: '%c' % int(x.group(1), 16), value)
+        return json.loads(value)
+
+    def __init__(self, uuid, params, version=2):
+        """
+        Initialize a BucketKey.
+
+        :param uuid: The UUID of the limit the bucket corresponds to.
+        :param params: A dictionary of the request parameters
+                       corresponding to the bucket.
+        :param version: The version of the bucket.  Optional; defaults
+                        to 2.  Most callers should use the default.
+        """
+
+        # Make sure we can represent the version of the bucket key
+        if version not in self._version_to_prefix:
+            raise ValueError("Unknown bucket key version %r" % version)
+
+        # Save the parameters
+        self.uuid = uuid
+        self.params = params
+        self.version = version
+
+        # Cache the string version of the key for effiency
+        self._cache = None
+
+    def __str__(self):
+        """
+        Returns the string form of the bucket key.
+        """
+
+        # If not cached, serialize the key
+        if self._cache is None:
+            parts = ['%s:%s' % (self._version_to_prefix[self.version],
+                                self.uuid)]
+            parts.extend('%s=%s' % (k, self._encode(v)) for k, v in
+                         sorted(self.params.items(), key=lambda x: x[0]))
+            self._cache = '/'.join(parts)
+
+        return self._cache
+
+    @classmethod
+    def decode(cls, key):
+        """
+        Decode a bucket key into a BucketKey instance.
+
+        :param key: The string form of a bucket key.
+
+        :returns: A suitable instance of BucketKey corresponding to
+                  the passed-in key.
+        """
+
+        # Determine bucket key version
+        prefix, sep, param_str = key.partition(':')
+        if sep != ':' or prefix not in cls._prefix_to_version:
+            raise ValueError("%r is not a bucket key" % key)
+        version = cls._prefix_to_version[prefix]
+
+        # Take the parameters apart...
+        parts = param_str.split('/')
+        uuid = parts.pop(0)
+        params = {}
+        for part in parts:
+            name, sep, value = part.partition('=')
+
+            # Make sure it's well-formed
+            if sep != '=':
+                raise ValueError("Cannot interpret parameter expression %r" %
+                                 part)
+
+            params[name] = cls._decode(value)
+
+        # Return a BucketKey
+        return cls(uuid, params, version=version)
 
 
 # Recognized units and their names and aliases
