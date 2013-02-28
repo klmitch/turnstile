@@ -20,6 +20,7 @@ import time
 import uuid
 
 import metatools
+import msgpack
 
 from turnstile import utils
 
@@ -93,6 +94,178 @@ class DeferLimit(Exception):
     """Exception raised if limit should not be considered."""
 
     pass
+
+
+class BucketLoader(object):
+    """
+    Load a bucket from its list representation.
+
+    The list representation includes several different record types,
+    representing a base bucket, an update to a bucket, and a
+    summarize-in-progress record.  This class will not only load a
+    bucket from that list representation, it will also accumulate all
+    auxiliary information needed for the algorithms below.
+
+    This is implemented as a class due to the complexity of the
+    information that the algorithm needs to return.  The return
+    information is represented by the following instance attributes:
+
+      bucket
+        The actual bucket, with all applicable updates applied.
+
+      updates
+        A count of the updates applied to the bucket.  Used by the
+        utility routine need_summary() to determine if the bucket
+        representation should be summarized (a compacting algorithm
+        used to limit database record growth).
+
+      delay
+        The return result of the delay() bucket method from the last
+        update record processed.  This will be the delay to apply to a
+        rate-limited request, or None if the request is not
+        rate-limited.
+
+      summarized
+        A boolean value indicating the presence of "summarize" records
+        in the bucket representation.  This is used to further inform
+        need_summary() as to whether a "summarize" record should be
+        added.  (The compacting algorithm is robust against multiple
+        "summarize" records being present, as long as no more
+        "summarize" records can be added while the bucket is being
+        compacted.  This is accomplished by ensuring that a
+        "summarize" request quiesces for a given period of time before
+        it is processed.)
+
+      last_summarize
+        If not None, this is the integer, 0-based index of the last
+        "summarize" record in the bucket representation.  The
+        compacting algorithm assembles a final bucket up to this last
+        "summarize" record, then inserts the full bucket after it; it
+        will then trim off all previous records, including this last
+        "summarize" record, to finish compacting the entry.  The index
+        of the last "summarize" record is used to ensure the insert
+        and the trim cover the appropriate records.
+    """
+
+    def __init__(self, bucket_class, db, limit, key, records,
+                 stop_uuid=None, stop_summarize=False):
+        """
+        Initialize a BucketLoader.  Generates the bucket from the list
+        of records.
+
+        :param bucket_class: The class of the bucket.
+        :param db: The database handle for the bucket.
+        :param limit: The limit object asociated with the bucket.
+        :param key: The database key identifying the bucket record
+                    list.
+        :param records: A list of msgpack'd strings containing the
+                        change records for the bucket.
+        :param stop_uuid: The UUID of the last record (typically an
+                          update record) which should be processed.
+        :param stop_summarize: If True, indicates that processing
+                               should be stopped once the _last_
+                               summarize record is encountered.
+        """
+
+        # Initialize the loading algorithm
+        self.bucket = None
+        self.updates = 0
+        self.delay = None
+        self.summarized = False
+        self.last_summarize = None
+
+        # Unpack the records
+        records = [msgpack.loads(rec) for rec in records]
+
+        # If stop_summarize is set, we need to find the last summary
+        # record
+        if stop_summarize:
+            for i, rec in enumerate(reversed(records)):
+                # If it's a summarize record, store the index of the
+                # record within the list
+                if 'summarize' in rec:
+                    self.summarized = True
+                    self.last_summarize = len(records) - i - 1
+                    break
+
+        # Now, build the bucket
+        no_update = False
+        for i, rec in enumerate(records):
+            # Break out if we hit the last summary record
+            if self.last_summarize is not None and i == self.last_summarize:
+                break
+
+            # Update the bucket as appropriate
+            if 'bucket' in rec:
+                # If we hit no_update, we're done rendering, but still
+                # need to look for 'summarize' records
+                if no_update:
+                    continue
+
+                # We have an actual bucket record; render it
+                self.bucket = bucket_class.hydrate(db, rec['bucket'],
+                                                   limit, key)
+            elif 'update' in rec:
+                # If we hit no_update, we're done rendering, but still
+                # need to look for 'summarize' records
+                if no_update:
+                    continue
+
+                # We have an update record; first make sure we have a
+                # bucket to update
+                if self.bucket is None:
+                    self.bucket = bucket_class(db, limit, key)
+
+                # Now, update the bucket, saving the computed delay
+                self.delay = self.bucket.delay(rec['update']['params'],
+                                               rec['update']['time'])
+
+                # Keep count of the number of updates, so we can
+                # generate a summary if needed
+                self.updates += 1
+            elif 'summarize' in rec:
+                # We have a summarize record; remember that one exists
+                self.summarized = True
+
+                if no_update:
+                    # We have now determined that there are
+                    # 'summarize' records; if we've also already
+                    # processed all the records we're interested in,
+                    # bail out
+                    break
+
+            # If we hit the last record we're supposed to process,
+            # stop
+            if stop_uuid is not None and rec.get('uuid') == stop_uuid:
+                if self.summarized:
+                    # We have now processed all the records we're
+                    # interested in; if we've seen a 'summarize'
+                    # record, then we've answered that question as
+                    # well, and we're done.
+                    break
+
+                # There may be a 'summarize' record still to be found,
+                # so just suspend updates to the bucket but search the
+                # rest of the record list
+                no_update = True
+
+        # Make sure we have a bucket at the end
+        if self.bucket is None:
+            self.bucket = bucket_class(db, limit, key)
+
+    def need_summary(self, max_updates):
+        """
+        Helper method to determine if a "summarize" record should be
+        added.
+
+        :param max_updates: Maximum number of updates before a
+                            summarize is required.
+
+        :returns: True if a "summarize" record should be added, False
+                  otherwise.
+        """
+
+        return self.summarized is False and self.updates >= max_updates
 
 
 class Bucket(object):
