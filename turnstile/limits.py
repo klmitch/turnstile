@@ -25,6 +25,12 @@ import msgpack
 from turnstile import utils
 
 
+class DeferLimit(Exception):
+    """Exception raised if limit should not be considered."""
+
+    pass
+
+
 class BucketKey(object):
     """
     Represent a bucket key.  This class provides functionality to
@@ -188,12 +194,6 @@ def get_unit_name(value):
 
     # Return name if we have one, otherwise stringify value
     return _units_map.get(value, str(value))
-
-
-class DeferLimit(Exception):
-    """Exception raised if limit should not be considered."""
-
-    pass
 
 
 class BucketLoader(object):
