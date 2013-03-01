@@ -814,3 +814,118 @@ class TestLimit(unittest2.TestCase):
 
         self.assertEqual(key, "1234")
         mock_BucketKey.assert_called_once_with('fake_uuid', params)
+
+    def test_format(self):
+        expected = ("This request was rate-limited.  Please retry your "
+                    "request after 1970-01-12T13:46:40Z.")
+        status = '413 Request Entity Too Large'
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        bucket = limits.Bucket('db', limit, 'key', next=1000000.0)
+        headers = {}
+
+        result_status, result_entity = limit.format(status, headers, {},
+                                                    bucket, 123)
+
+        self.assertEqual(result_status, status)
+        self.assertEqual(result_entity, expected)
+        self.assertEqual(headers, {'Content-Type': 'text/plain'})
+
+    def test_value_get(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+
+        self.assertEqual(limit.value, 10)
+
+    def test_value_set(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        limit.value = 20
+
+        self.assertEqual(limit._value, 20)
+
+    def test_value_set_zero(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+
+        with self.assertRaises(ValueError):
+            limit.value = 0
+
+    def test_value_set_negative(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+
+        with self.assertRaises(ValueError):
+            limit.value = -1
+
+    def test_unit_value_get(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+
+        self.assertEqual(limit.unit_value, 1)
+
+    def test_unit_value_set(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        limit.unit_value = 60
+
+        self.assertEqual(int(limit._unit), 60)
+
+    def test_unit_value_set_zero(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+
+        with self.assertRaises(ValueError):
+            limit.unit_value = 0
+
+    def test_unit_value_set_negative(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+
+        with self.assertRaises(ValueError):
+            limit.unit_value = -1
+
+    def test_unit_get(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+
+        for unit, value in [('second', 1), ('minute', 60), ('hour', 3600),
+                            ('day', 86400)]:
+            limit.unit = value
+            self.assertEqual(limit.unit, unit)
+
+        limit.unit = 31337
+        self.assertEqual(limit.unit, '31337')
+
+    def test_unit_set(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+
+        for unit in ('second', 'seconds', 'secs', 'sec', 's', '1', 1):
+            limit.unit = unit
+            self.assertEqual(int(limit._unit), 1)
+
+        for unit in ('minute', 'minutes', 'mins', 'min', 'm', '60', 60):
+            limit.unit = unit
+            self.assertEqual(int(limit._unit), 60)
+
+        for unit in ('hour', 'hours', 'hrs', 'hr', 'h', '3600', 3600):
+            limit.unit = unit
+            self.assertEqual(int(limit._unit), 3600)
+
+        for unit in ('day', 'days', 'd', '86400', 86400):
+            limit.unit = unit
+            self.assertEqual(int(limit._unit), 86400)
+
+        for unit in ('31337', 31337):
+            limit.unit = unit
+            self.assertEqual(int(limit._unit), 31337)
+
+        with self.assertRaises(ValueError):
+            limit.unit = 3133.7
+
+        with self.assertRaises(ValueError):
+            limit.unit = 'nosuchunit'
+
+        with self.assertRaises(ValueError):
+            limit.unit = '0'
+
+        with self.assertRaises(ValueError):
+            limit.unit = -1
+
+    def test_cost(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+
+        self.assertEqual(limit.cost, 0.1)
+
+        limit.unit = 60
+        self.assertEqual(limit.cost, 6.0)
