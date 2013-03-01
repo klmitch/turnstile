@@ -725,3 +725,92 @@ class TestLimit(unittest2.TestCase):
         limit = LimitTest1('db', **exemplar)
 
         self.assertEqual(limit.dehydrate(), expected)
+
+    @mock.patch.object(limits.Limit, 'route', return_value='xlated_uri')
+    def test_route_basic(self, mock_route):
+        mapper = mock.Mock()
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        limit._route(mapper)
+
+        mock_route.assert_called_once_with(
+            'uri', dict(conditions=dict(function=limit._filter)))
+        mapper.connect.assert_called_once_with(
+            None, 'xlated_uri', conditions=dict(function=limit._filter))
+
+    @mock.patch.object(limits.Limit, 'route', return_value='xlated_uri')
+    def test_route_verbs(self, mock_route):
+        mapper = mock.Mock()
+        limit = limits.Limit('db', uri='uri', value=10, unit=1,
+                             verbs=['get', 'post'])
+        limit._route(mapper)
+
+        kwargs = dict(conditions=dict(
+            function=limit._filter,
+            method=['GET', 'POST'],
+        ))
+        mock_route.assert_called_once_with('uri', kwargs)
+        mapper.connect.assert_called_once_with(
+            None, 'xlated_uri', **kwargs)
+
+    @mock.patch.object(limits.Limit, 'route', return_value='xlated_uri')
+    def test_route_requirements(self, mock_route):
+        mapper = mock.Mock()
+        limit = limits.Limit('db', uri='uri', value=10, unit=1,
+                             requirements=dict(foo=r'\..*', bar=r'.\.*'))
+        limit._route(mapper)
+
+        kwargs = dict(
+            conditions=dict(function=limit._filter),
+            requirements=dict(foo=r'\..*', bar=r'.\.*'),
+        )
+        mock_route.assert_called_once_with('uri', kwargs)
+        mapper.connect.assert_called_once_with(
+            None, 'xlated_uri', **kwargs)
+
+    def test_route_hook(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        result = limit.route('uri', {})
+
+        self.assertEqual(result, 'uri')
+
+    @mock.patch.object(limits.BucketKey, 'decode',
+                       return_value=mock.Mock(uuid='fake_uuid',
+                                              params='params'))
+    def test_decode(self, mock_decode):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        limit.uuid = 'fake_uuid'
+        key = 'bucket:fake_uuid/a=1/b=2/c=3/d=4/e=5/f=6'
+        params = limit.decode(key)
+
+        mock_decode.assert_called_once_with(key)
+        self.assertEqual(params, 'params')
+
+    @mock.patch.object(limits.BucketKey, 'decode', side_effect=ValueError)
+    def test_decode_badkey(self, mock_decode):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        limit.uuid = 'fake_uuid'
+        key = 'bucket:fake_uuid/a=1/b=2/c=3/d=4/e=5/f=6'
+
+        self.assertRaises(ValueError, limit.decode, key)
+        mock_decode.assert_called_once_with(key)
+
+    @mock.patch.object(limits.BucketKey, 'decode',
+                       return_value=mock.Mock(uuid='other_uuid',
+                                              params='params'))
+    def test_decode_baduuid(self, mock_decode):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        limit.uuid = 'fake_uuid'
+        key = 'bucket:fake_uuid/a=1/b=2/c=3/d=4/e=5/f=6'
+
+        self.assertRaises(ValueError, limit.decode, key)
+        mock_decode.assert_called_once_with(key)
+
+    @mock.patch.object(limits, 'BucketKey', return_value=1234)
+    def test_key(self, mock_BucketKey):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1)
+        limit.uuid = 'fake_uuid'
+        params = dict(a=1, b=2, c=3, d=4, e=5, f=6)
+        key = limit.key(params)
+
+        self.assertEqual(key, "1234")
+        mock_BucketKey.assert_called_once_with('fake_uuid', params)

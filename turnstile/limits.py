@@ -769,30 +769,15 @@ class Limit(object):
                     this is not the case.
         """
 
-        # This really is a bucket, right?
-        if not key.startswith('bucket:'):
-            raise ValueError("%r is not a bucket key" % key)
-
-        # Take the bucket apart...
-        parts = key[7:].split('/')
+        # Parse the bucket key
+        key = BucketKey.decode(key)
 
         # Make sure the uuids match
-        if parts[0] != self.uuid:
+        if key.uuid != self.uuid:
             raise ValueError("%r is not a bucket corresponding to this limit" %
                              key)
 
-        # Decode the key
-        params = {}
-        for part in parts[1:]:
-            name, sep, value = part.partition('=')
-
-            # Make sure it's well-formed
-            if sep != '=':
-                raise ValueError("Cannot interpret key part %r" % part)
-
-            params[name] = _decode(value)
-
-        return params
+        return key.params
 
     def key(self, params):
         """
@@ -804,11 +789,7 @@ class Limit(object):
                        from routes.
         """
 
-        # Build up the key in pieces
-        parts = ['bucket:%s' % self.uuid]
-        parts.extend('%s=%s' % (k, _encode(params[k]))
-                     for k in sorted(params))
-        return '/'.join(parts)
+        return str(BucketKey(self.uuid, params))
 
     def _filter(self, environ, params):
         """
