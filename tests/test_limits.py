@@ -8,6 +8,65 @@ from turnstile import limits
 import tests
 
 
+class TestMakeUnits(tests.TestCase):
+    def test_make_units(self):
+        result = limits._make_units(
+            (1, ('a', 'b', 'c')),
+            (2, ('d', 'e')),
+            (3, ('f',)),
+        )
+
+        self.assertEqual(result, {
+            1: 'a',
+            'a': 1,
+            'b': 1,
+            'c': 1,
+            2: 'd',
+            'd': 2,
+            'e': 2,
+            3: 'f',
+            'f': 3,
+        })
+
+
+class TestTimeUnit(tests.TestCase):
+    def test_time_unit(self):
+        for unit in ('second', 'seconds', 'secs', 'sec', 's', '1', 1):
+            result = limits.TimeUnit(unit)
+            self.assertEqual(result.value, 1)
+            self.assertEqual(str(result), 'second')
+            self.assertEqual(int(result), 1)
+
+        for unit in ('minute', 'minutes', 'mins', 'min', 'm', '60', 60):
+            result = limits.TimeUnit(unit)
+            self.assertEqual(result.value, 60)
+            self.assertEqual(str(result), 'minute')
+            self.assertEqual(int(result), 60)
+
+        for unit in ('hour', 'hours', 'hrs', 'hr', 'h', '3600', 3600):
+            result = limits.TimeUnit(unit)
+            self.assertEqual(result.value, 3600)
+            self.assertEqual(str(result), 'hour')
+            self.assertEqual(int(result), 3600)
+
+        for unit in ('day', 'days', 'd', '86400', 86400):
+            result = limits.TimeUnit(unit)
+            self.assertEqual(result.value, 86400)
+            self.assertEqual(str(result), 'day')
+            self.assertEqual(int(result), 86400)
+
+        for unit in ('31337', 31337):
+            result = limits.TimeUnit(unit)
+            self.assertEqual(result.value, 31337)
+            self.assertEqual(str(result), '31337')
+            self.assertEqual(int(result), 31337)
+
+        self.assertRaises(ValueError, limits.TimeUnit, 3133.7)
+        self.assertRaises(ValueError, limits.TimeUnit, -31337)
+        self.assertRaises(ValueError, limits.TimeUnit, '-31337')
+        self.assertRaises(ValueError, limits.TimeUnit, 'nosuchunit')
+
+
 class TestBucketKey(tests.TestCase):
     def test_part_encode(self):
         self.assertEqual(limits.BucketKey._encode('this is a test'),
@@ -124,37 +183,6 @@ class TestBucketKey(tests.TestCase):
     def test_decode_version2_badparams(self):
         self.assertRaises(ValueError, limits.BucketKey.decode,
                           'bucket_v2:fake_uuid/a=1/b="2"/c')
-
-
-class TestUnits(tests.TestCase):
-    def test_unit_value(self):
-        for unit in ('second', 'seconds', 'secs', 'sec', 's'):
-            self.assertEqual(limits.get_unit_value(unit), 1)
-
-        for unit in ('minute', 'minutes', 'mins', 'min', 'm'):
-            self.assertEqual(limits.get_unit_value(unit), 60)
-
-        for unit in ('hour', 'hours', 'hrs', 'hr', 'h'):
-            self.assertEqual(limits.get_unit_value(unit), 3600)
-
-        for unit in ('day', 'days', 'd'):
-            self.assertEqual(limits.get_unit_value(unit), 86400)
-
-        self.assertEqual(limits.get_unit_value('31337'), 31337)
-        self.assertEqual(limits.get_unit_value(31337), 31337)
-
-        with self.assertRaises(TypeError):
-            val = limits.get_unit_value(3133.7)
-
-        with self.assertRaises(KeyError):
-            value = limits.get_unit_value('nosuchunit')
-
-    def test_unit_name(self):
-        for unit, value in [('second', 1), ('minute', 60), ('hour', 3600),
-                            ('day', 86400)]:
-            self.assertEqual(limits.get_unit_name(value), unit)
-
-        self.assertEqual(limits.get_unit_name(31337), '31337')
 
 
 class TestBucketLoader(tests.TestCase):
@@ -589,7 +617,7 @@ class TestLimit(tests.TestCase):
         self.assertEqual(limit.uuid, 'fake_uuid')
         self.assertEqual(limit.uri, 'uri')
         self.assertEqual(limit._value, 10)
-        self.assertEqual(limit._unit, 1)
+        self.assertEqual(int(limit._unit), 1)
         self.assertEqual(limit.verbs, [])
         self.assertEqual(limit.requirements, {})
         self.assertEqual(limit.use, [])
@@ -1072,7 +1100,7 @@ class TestLimit(tests.TestCase):
         limit = limits.Limit('db', uri='uri', value=10, unit=1)
         limit.unit_value = 60
 
-        self.assertEqual(limit._unit, 60)
+        self.assertEqual(int(limit._unit), 60)
 
     def test_unit_value_set_zero(self):
         limit = limits.Limit('db', uri='uri', value=10, unit=1)
@@ -1091,41 +1119,39 @@ class TestLimit(tests.TestCase):
 
         for unit, value in [('second', 1), ('minute', 60), ('hour', 3600),
                             ('day', 86400)]:
-            limit._unit = value
+            limit.unit = value
             self.assertEqual(limit.unit, unit)
 
-        limit._unit = 31337
+        limit.unit = 31337
         self.assertEqual(limit.unit, '31337')
 
     def test_unit_set(self):
         limit = limits.Limit('db', uri='uri', value=10, unit=1)
 
-        for unit in ('second', 'seconds', 'secs', 'sec', 's'):
+        for unit in ('second', 'seconds', 'secs', 'sec', 's', '1', 1):
             limit.unit = unit
-            self.assertEqual(limit._unit, 1)
+            self.assertEqual(int(limit._unit), 1)
 
-        for unit in ('minute', 'minutes', 'mins', 'min', 'm'):
+        for unit in ('minute', 'minutes', 'mins', 'min', 'm', '60', 60):
             limit.unit = unit
-            self.assertEqual(limit._unit, 60)
+            self.assertEqual(int(limit._unit), 60)
 
-        for unit in ('hour', 'hours', 'hrs', 'hr', 'h'):
+        for unit in ('hour', 'hours', 'hrs', 'hr', 'h', '3600', 3600):
             limit.unit = unit
-            self.assertEqual(limit._unit, 3600)
+            self.assertEqual(int(limit._unit), 3600)
 
-        for unit in ('day', 'days', 'd'):
+        for unit in ('day', 'days', 'd', '86400', 86400):
             limit.unit = unit
-            self.assertEqual(limit._unit, 86400)
+            self.assertEqual(int(limit._unit), 86400)
 
-        limit.unit = '31337'
-        self.assertEqual(limit._unit, 31337)
+        for unit in ('31337', 31337):
+            limit.unit = unit
+            self.assertEqual(int(limit._unit), 31337)
 
-        limit.unit = 31337
-        self.assertEqual(limit._unit, 31337)
-
-        with self.assertRaises(TypeError):
+        with self.assertRaises(ValueError):
             limit.unit = 3133.7
 
-        with self.assertRaises(KeyError):
+        with self.assertRaises(ValueError):
             limit.unit = 'nosuchunit'
 
         with self.assertRaises(ValueError):

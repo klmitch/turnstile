@@ -31,6 +31,82 @@ class DeferLimit(Exception):
     pass
 
 
+def _make_units(*units):
+    """
+    Units map helper.  Each argument is treated as a unit
+    descriptor--a tuple where the first element specifies a numerical
+    value, and the second element consists of a sequence of names for
+    that value.  Returns a dictionary where each name is mapped to the
+    numerical value, and the numerical value is mapped to the first
+    name.
+    """
+
+    units_map = {}
+    for value, names in units:
+        units_map[value] = names[0]
+        for name in names:
+            units_map[name] = value
+
+    return units_map
+
+
+class TimeUnit(object):
+    """
+    A custom type for a time unit.  Initialized with the time unit in
+    either string or integer form.  To obtain the unit name, use
+    str(); to obtain the integer value, use int().
+    """
+
+    _units_map = _make_units(
+        (1, ('second', 'seconds', 'secs', 'sec', 's')),
+        (60, ('minute', 'minutes', 'mins', 'min', 'm')),
+        (60 * 60, ('hour', 'hours', 'hrs', 'hr', 'h')),
+        (60 * 60 * 24, ('day', 'days', 'd')),
+    )
+
+    def __init__(self, value):
+        """
+        Initialize a TimeUnit object.
+
+        :param value: The value.  This may be a recognized unit name,
+                      or an integer value in either string or integer
+                      format.  A ValueError will be raised if the
+                      value cannot be interpreted.
+        """
+
+        if isinstance(value, (int, long)):
+            # Numbers map to numbers
+            pass
+        elif not isinstance(value, basestring):
+            # Prohibit anything other than a string
+            raise ValueError('unit must be a string')
+        elif value.isdigit():
+            # If it's all digits, it maps to a number
+            value = int(value)
+        else:
+            # Look it up in the units map...
+            try:
+                value = self._units_map[value.lower()]
+            except KeyError:
+                raise ValueError('unknown unit %r' % value)
+
+        # Prohibit negative numbers
+        if value <= 0:
+            raise ValueError('unit must be a positive integer, not %r' % value)
+
+        self.value = value
+
+    def __str__(self):
+        """Return the string representation of the time unit."""
+
+        return self._units_map.get(self.value, str(self.value))
+
+    def __int__(self):
+        """Return the integer value of the time unit."""
+
+        return self.value
+
+
 class BucketKey(object):
     """
     Represent a bucket key.  This class provides functionality to
@@ -151,49 +227,6 @@ class BucketKey(object):
 
         # Return a BucketKey
         return cls(uuid, params, version=version)
-
-
-# Recognized units and their names and aliases
-_units_list = [
-    (1, ('second', 'seconds', 'secs', 'sec', 's')),
-    (60, ('minute', 'minutes', 'mins', 'min', 'm')),
-    (60 * 60, ('hour', 'hours', 'hrs', 'hr', 'h')),
-    (60 * 60 * 24, ('day', 'days', 'd')),
-    ]
-
-
-# Build up a mapping of units to names and vice versa
-_units_map = {}
-for secs, names in _units_list:
-    _units_map[secs] = names[0]
-    for name in names:
-        _units_map[name] = secs
-
-
-def get_unit_value(name):
-    """Given a unit's name, return its value."""
-
-    # Numbers map to numbers
-    if isinstance(name, (int, long)):
-        return name
-
-    # Only accept strings from here on
-    if not isinstance(name, basestring):
-        raise TypeError('name must be a string.')
-
-    # Again, numbers map to numbers
-    if name.isdigit():
-        return int(name)
-
-    # Look it up in the units map
-    return _units_map[name.lower()]
-
-
-def get_unit_name(value):
-    """Given a unit's value, return its name."""
-
-    # Return name if we have one, otherwise stringify value
-    return _units_map.get(value, str(value))
 
 
 class BucketLoader(object):
@@ -532,7 +565,7 @@ class Limit(object):
             desc=('The unit of time over which the "value" is considered.  '
                   'This may be a string, such as "second", or an integer '
                   'number of seconds, expressed as a string.  Required.'),
-            type=str,
+            type=TimeUnit,
             ),
         verbs=dict(
             desc=('The HTTP verbs this limit should apply to.  Optional.  If '
@@ -916,17 +949,17 @@ class Limit(object):
     def unit(self):
         """Retrieve the name of the unit used for this limit."""
 
-        return get_unit_name(self._unit)
+        return str(self._unit)
 
     @unit.setter
     def unit(self, value):
         """
         Change the unit for this limit to the specified unit.  The new
-        value may be specified as an integer, a string the indicating
+        value may be specified as an integer, a string indicating the
         number of seconds, or one of the recognized unit names.
         """
 
-        self.unit_value = get_unit_value(value)
+        self._unit = TimeUnit(value)
 
     @property
     def unit_value(self):
@@ -935,19 +968,17 @@ class Limit(object):
         seconds.
         """
 
-        return self._unit
+        return int(self._unit)
 
     @unit_value.setter
     def unit_value(self, value):
         """
-        Change the unit used for this limit to the given number of
-        seconds.
+        Change the unit for this limit to the specified unit.  The new
+        value may be specified as an integer, a string indicating the
+        number of seconds, or one of the recognized unit names.
         """
 
-        if value <= 0:
-            raise ValueError("Unit value must be > 0")
-
-        self._unit = int(value)
+        self._unit = TimeUnit(value)
 
     @property
     def cost(self):
