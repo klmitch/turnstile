@@ -532,9 +532,10 @@ class LimitTest1(limits.Limit):
 
 class LimitTest2(limits.Limit):
     attrs = dict(test_attr=dict(
-            desc='Test attribute.',
-            type=(str,),
-            default=''))
+        desc='Test attribute.',
+        type=(str,),
+        default=''
+    ))
 
     def route(self, uri, route_args):
         route_args['route_add'] = 'LimitTest2'
@@ -554,7 +555,7 @@ class TestLimitMeta(unittest2.TestCase):
             'turnstile.limits:Limit': limits.Limit,
             'tests.unit.test_limits:LimitTest1': LimitTest1,
             'tests.unit.test_limits:LimitTest2': LimitTest2,
-            }
+        }
 
         self.assertEqual(limits.LimitMeta._registry, expected)
 
@@ -657,7 +658,7 @@ class TestLimit(unittest2.TestCase):
             requirements=dict(foo=r'\..*', bar=r'.\.*'),
             use=['baz'],
             continue_scan=False,
-            )
+        )
         exemplar = dict(limit_class='turnstile.limits:Limit')
         exemplar.update(expected)
         limit = limits.Limit.hydrate('db', exemplar)
@@ -679,7 +680,7 @@ class TestLimit(unittest2.TestCase):
             requirements=dict(foo=r'\..*', bar=r'.\.*'),
             use=['baz'],
             continue_scan=False,
-            )
+        )
         exemplar = dict(limit_class='no.such:Limit')
         exemplar.update(expected)
         limit = limits.Limit.hydrate('db', exemplar)
@@ -699,7 +700,7 @@ class TestLimit(unittest2.TestCase):
             requirements=dict(foo=r'\..*', bar=r'.\.*'),
             use=['baz'],
             continue_scan=False,
-            )
+        )
         exemplar = dict(limit_class='no.such:Limit')
         exemplar.update(expected)
         limit = limits.Limit.hydrate('db', exemplar)
@@ -719,7 +720,7 @@ class TestLimit(unittest2.TestCase):
             queries=['spam'],
             use=['baz'],
             continue_scan=False,
-            )
+        )
         expected = dict(limit_class='tests.unit.test_limits:LimitTest1')
         expected.update(exemplar)
         limit = LimitTest1('db', **exemplar)

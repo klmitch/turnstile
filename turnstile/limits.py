@@ -549,24 +549,24 @@ class Limit(object):
                   'instantiated.'),
             type=str,
             default=lambda: str(uuid.uuid4()),
-            ),
+        ),
         uri=dict(
             desc=('The URI the limit applies to.  This should be in a syntax '
                   'recognized by Routes, i.e., "/constant/{variable}".  Note '
                   'that this URI may be displayed to the user.  Required.'),
             type=str,
-            ),
+        ),
         value=dict(
             desc=('The permissible number of requests per unit time.  '
                   'Required.'),
             type=int,
-            ),
+        ),
         unit=dict(
             desc=('The unit of time over which the "value" is considered.  '
                   'This may be a string, such as "second", or an integer '
                   'number of seconds, expressed as a string.  Required.'),
             type=TimeUnit,
-            ),
+        ),
         verbs=dict(
             desc=('The HTTP verbs this limit should apply to.  Optional.  If '
                   'not provided, this limit matches any request to the URI; '
@@ -576,7 +576,7 @@ class Limit(object):
             subtype=str,
             default=lambda: [],  # Make sure we don't use the *same* list
             xform=lambda verbs: [v.upper() for v in verbs],
-            ),
+        ),
         requirements=dict(
             desc=('A mapping of variable names in the URI to regular '
                   'expressions; may be used to further restrict a given '
@@ -586,7 +586,7 @@ class Limit(object):
             type=dict,
             subtype=str,
             default=lambda: {},  # Make sure we don't use the *same* dict
-            ),
+        ),
         queries=dict(
             desc=('A list of query arguments that must be present in the '
                   'request in order for this limit to apply.  Query argument '
@@ -595,7 +595,7 @@ class Limit(object):
             type=list,
             subtype=str,
             default=lambda: [],  # Make sure we don't use the *same* list
-            ),
+        ),
         use=dict(
             desc=('A list of parameters derived from the URI which should be '
                   'used to construct the bucket key.  By default, no '
@@ -604,7 +604,7 @@ class Limit(object):
             type=list,
             subtype=str,
             default=lambda: [],  # Make sure we don't use the *same* list
-            ),
+        ),
         continue_scan=dict(
             desc=('A boolean which signals whether to consider limits '
                   'following this one in the list.  If True (the '
@@ -613,8 +613,8 @@ class Limit(object):
                   'remaining limits.'),
             type=bool,
             default=True,
-            ),
-        )
+        ),
+    )
 
     bucket_class = Bucket
 
