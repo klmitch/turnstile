@@ -759,10 +759,44 @@ class Limit(object):
 
         return uri
 
+    def load(self, key):
+        """
+        Given a bucket key, load the corresponding bucket.
+
+        :param key: The bucket key.  This may be either a string or a
+                    BucketKey object.
+
+        :returns: A Bucket object.
+        """
+
+        # Turn the key into a BucketKey
+        if isinstance(key, basestring):
+            key = BucketKey.decode(key)
+
+        # Make sure the uuids match
+        if key.uuid != self.uuid:
+            raise ValueError("%s is not a bucket corresponding to this limit" %
+                             key)
+
+        # If the key is a version 1 key, load it straight from the
+        # database
+        if key.version == 1:
+            raw = msgpack.loads(self.db.get(str(key)))
+            return self.bucket_class.hydrate(self.db, raw, self, str(key))
+
+        # OK, use a BucketLoader
+        records = self.db.lrange(str(key), 0, -1)
+        loader = BucketLoader(self.bucket_class, self.db, self, str(key),
+                              records)
+
+        return loader.bucket
+
     def decode(self, key):
         """
         Given a bucket key, compute the parameters used to compute
         that key.
+
+        Note: Deprecated.  Use BucketKey.decode() instead.
 
         :param key: The bucket key.  Note that the UUID must match the
                     UUID of this limit; a ValueError will be raised if
@@ -774,7 +808,7 @@ class Limit(object):
 
         # Make sure the uuids match
         if key.uuid != self.uuid:
-            raise ValueError("%r is not a bucket corresponding to this limit" %
+            raise ValueError("%s is not a bucket corresponding to this limit" %
                              key)
 
         return key.params

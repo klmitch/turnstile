@@ -773,6 +773,104 @@ class TestLimit(unittest2.TestCase):
 
         self.assertEqual(result, 'uri')
 
+    @mock.patch('msgpack.loads', side_effect=lambda x: x)
+    @mock.patch.object(limits.BucketKey, 'decode',
+                       return_value=mock.MagicMock(**{
+                           'uuid': 'fake_uuid',
+                           'version': 1,
+                       }))
+    @mock.patch.object(limits, 'BucketLoader',
+                       return_value=mock.Mock(bucket='v2 bucket'))
+    def test_load_string_v1(self, mock_BucketLoader, mock_decode, mock_loads):
+        mock_decode.return_value.__str__.return_value = 'parsed_key'
+        db = mock.Mock(**{
+            'get.return_value': 'bucket data',
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1)
+        limit.uuid = 'fake_uuid'
+        limit.bucket_class = mock.Mock(**{
+            'hydrate.return_value': 'v1 bucket',
+        })
+
+        result = limit.load('bucket_key')
+
+        self.assertEqual(result, 'v1 bucket')
+        mock_decode.assert_called_once_with('bucket_key')
+        db.get.assert_called_once_with('parsed_key')
+        mock_loads.assert_called_once_with('bucket data')
+        limit.bucket_class.hydrate.assert_called_once_with(
+            db, 'bucket data', limit, 'parsed_key')
+        self.assertFalse(db.lrange.called)
+        self.assertFalse(mock_BucketLoader.called)
+
+    @mock.patch('msgpack.loads', side_effect=lambda x: x)
+    @mock.patch.object(limits.BucketKey, 'decode',
+                       return_value=mock.MagicMock(**{
+                           'uuid': 'fake_uuid',
+                           'version': 2,
+                       }))
+    @mock.patch.object(limits, 'BucketLoader',
+                       return_value=mock.Mock(bucket='v2 bucket'))
+    def test_load_string_v2(self, mock_BucketLoader, mock_decode, mock_loads):
+        mock_decode.return_value.__str__.return_value = 'parsed_key'
+        db = mock.Mock(**{
+            'get.return_value': 'bucket data',
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1)
+        limit.uuid = 'fake_uuid'
+        limit.bucket_class = mock.Mock(**{
+            'hydrate.return_value': 'v1 bucket',
+        })
+
+        result = limit.load('bucket_key')
+
+        self.assertEqual(result, 'v2 bucket')
+        mock_decode.assert_called_once_with('bucket_key')
+        self.assertFalse(db.get.called)
+        self.assertFalse(mock_loads.called)
+        self.assertFalse(limit.bucket_class.hydrate.called)
+        db.lrange.assert_called_once_with('parsed_key', 0, -1)
+        mock_BucketLoader.assert_called_once_with(
+            limit.bucket_class, db, limit, 'parsed_key',
+            ['record1', 'record2'])
+
+    @mock.patch('msgpack.loads', side_effect=lambda x: x)
+    @mock.patch.object(limits.BucketKey, 'decode',
+                       return_value=mock.MagicMock(**{
+                           'uuid': 'fake_uuid',
+                           'version': 1,
+                       }))
+    @mock.patch.object(limits, 'BucketLoader',
+                       return_value=mock.Mock(bucket='v2 bucket'))
+    def test_load_nonstr_uuid_mismatch(self, mock_BucketLoader, mock_decode,
+                                       mock_loads):
+        mock_decode.return_value.__str__.return_value = 'parsed_key'
+        db = mock.Mock(**{
+            'get.return_value': 'bucket data',
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1)
+        limit.uuid = 'fake_uuid'
+        limit.bucket_class = mock.Mock(**{
+            'hydrate.return_value': 'v1 bucket',
+        })
+        key = mock.MagicMock(**{
+            'uuid': 'other_uuid',
+            'version': 2,
+        })
+        key.__str__.return_value = 'parsed_other_key'
+
+        self.assertRaises(ValueError, limit.load, key)
+
+        self.assertFalse(mock_decode.called)
+        self.assertFalse(db.get.called)
+        self.assertFalse(mock_loads.called)
+        self.assertFalse(limit.bucket_class.hydrate.called)
+        self.assertFalse(db.lrange.called)
+        self.assertFalse(mock_BucketLoader.called)
+
     @mock.patch.object(limits.BucketKey, 'decode',
                        return_value=mock.Mock(uuid='fake_uuid',
                                               params='params'))
