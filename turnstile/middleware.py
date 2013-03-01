@@ -183,6 +183,12 @@ class TurnstileMiddleware(object):
             # Allow ImportError to bubble up
             self.preprocessors.append(utils.import_class(preproc))
 
+        # Set up request postprocessors
+        self.postprocessors = []
+        for postproc in self.conf.get('postprocess', '').split():
+            # Allow ImportError to bubble up
+            self.postprocessors.append(utils.import_class(postproc))
+
         # Initialize the control daemon
         if config.Config.to_bool(self.conf['control'].get('remote', 'no'),
                                  False):
@@ -285,6 +291,17 @@ class TurnstileMiddleware(object):
 
             return self.format_delay(delay, limit, bucket,
                                      environ, start_response)
+
+        with self.mapper_lock:
+            # Run the request postprocessors; some may want to refer
+            # to the limit data, so protect this in the mapper_lock
+            for postproc in self.postprocessors:
+                # Postprocessors are expected to modify the
+                # environment; they are helpers to set up variables
+                # expected by the limit classes.  They run after the
+                # limits are evaluated, to support reporting the
+                # limits to the caller.
+                postproc(self, environ)
 
         return self.app(environ, start_response)
 
