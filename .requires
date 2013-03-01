@@ -5,3 +5,4 @@ metatools
 msgpack-python
 redis
 routes
+setuptools
