@@ -914,7 +914,7 @@ class Limit(object):
         environment under the "turnstile.conf" key.
         """
 
-        pass
+        pass  # Pragma: nocover
 
     def format(self, status, headers, environ, bucket, delay):
         """
