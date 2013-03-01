@@ -673,7 +673,8 @@ class Limit(object):
                 value = '[%s]' % ', '.join(sublist)
             elif attr_type == dict:
                 sublist = ['%s=%r' % (k, v) for k, v in
-                           getattr(self, attr).items()]
+                           sorted(getattr(self, attr).items(),
+                                  key=lambda x: x[0])]
                 value = '{%s}' % ', '.join(sublist)
             else:
                 value = repr(getattr(self, attr))

@@ -572,3 +572,156 @@ class TestLimitMeta(unittest2.TestCase):
         self.assertEqual(set(LimitTest1.attrs.keys()), base_attrs)
         self.assertEqual(set(LimitTest2.attrs.keys()),
                          base_attrs | set(['test_attr']))
+
+
+class TestLimit(unittest2.TestCase):
+    @mock.patch('uuid.uuid4', return_value='fake_uuid')
+    def test_init_default(self, mock_uuid4):
+        limit = limits.Limit('db', uri='uri', value=10, unit='second')
+
+        self.assertEqual(limit.db, 'db')
+        self.assertEqual(limit.uuid, 'fake_uuid')
+        self.assertEqual(limit.uri, 'uri')
+        self.assertEqual(limit._value, 10)
+        self.assertEqual(int(limit._unit), 1)
+        self.assertEqual(limit.verbs, [])
+        self.assertEqual(limit.requirements, {})
+        self.assertEqual(limit.use, [])
+        self.assertEqual(limit.continue_scan, True)
+
+    def test_init_uuid(self):
+        limit1 = limits.Limit('db', uri='uri', value=10, unit='second')
+        limit2 = limits.Limit('db', uri='uri', value=10, unit='second')
+
+        self.assertNotEqual(limit1.uuid, limit2.uuid)
+
+    def test_init_missing_value(self):
+        with self.assertRaises(TypeError):
+            limit = limits.Limit('db')
+
+    def test_init_bad_value(self):
+        with self.assertRaises(ValueError):
+            limit = limits.Limit('db', uri='uri', value=0, unit=1)
+
+    def test_init_bad_unit(self):
+        with self.assertRaises(ValueError):
+            limit = limits.Limit('db', uri='uri', value=10, unit=0)
+
+    def test_init_verbs(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1,
+                             verbs=['get', 'PUT', 'Head'])
+
+        self.assertEqual(limit.verbs, ['GET', 'PUT', 'HEAD'])
+
+    def test_init_requirements(self):
+        expected = dict(foo=r'\..*', bar=r'.\.*')
+        limit = limits.Limit('db', uri='uri', value=10, unit=1,
+                             requirements=expected)
+
+        self.assertEqual(limit.requirements, expected)
+
+    def test_init_use(self):
+        expected = ['spam', 'ni']
+        limit = limits.Limit('db', uri='uri', value=10, unit=1,
+                             use=expected)
+
+        self.assertEqual(limit.use, expected)
+
+    def test_init_continue_scan(self):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1,
+                             continue_scan=False)
+
+        self.assertEqual(limit.continue_scan, False)
+
+    @mock.patch('uuid.uuid4', return_value='fake_uuid')
+    def test_repr(self, mock_uuid4):
+        limit = limits.Limit('db', uri='uri', value=10, unit=1,
+                             verbs=['GET', 'PUT'],
+                             requirements=dict(foo=r'\..*', bar=r'.\.*'),
+                             use=['baz', 'quux'], continue_scan=False)
+
+        self.assertEqual(repr(limit), "<turnstile.limits:Limit "
+                         "continue_scan=False queries=[] "
+                         "requirements={bar='.\\\\.*', foo='\\\\..*'} "
+                         "unit='second' uri='uri' use=['baz', 'quux'] "
+                         "uuid='fake_uuid' value=10 verbs=['GET', 'PUT'] "
+                         "at 0x%x>" % id(limit))
+
+    @mock.patch.object(utils, 'import_class')
+    def test_hydrate_from_registry(self, mock_import_class):
+        expected = dict(
+            uri='uri',
+            value=10,
+            unit='second',
+            verbs=['GET', 'PUT'],
+            requirements=dict(foo=r'\..*', bar=r'.\.*'),
+            use=['baz'],
+            continue_scan=False,
+            )
+        exemplar = dict(limit_class='turnstile.limits:Limit')
+        exemplar.update(expected)
+        limit = limits.Limit.hydrate('db', exemplar)
+
+        self.assertFalse(mock_import_class.called)
+        self.assertEqual(limit.__class__, limits.Limit)
+        self.assertEqual(limit.db, 'db')
+        for key, value in expected.items():
+            self.assertEqual(getattr(limit, key), value)
+
+    @mock.patch.dict(limits.LimitMeta._registry)
+    @mock.patch.object(utils, 'import_class')
+    def test_hydrate_no_match(self, mock_import_class):
+        expected = dict(
+            uri='uri',
+            value=10,
+            unit='second',
+            verbs=['GET', 'PUT'],
+            requirements=dict(foo=r'\..*', bar=r'.\.*'),
+            use=['baz'],
+            continue_scan=False,
+            )
+        exemplar = dict(limit_class='no.such:Limit')
+        exemplar.update(expected)
+        limit = limits.Limit.hydrate('db', exemplar)
+
+        mock_import_class.assert_called_once_with(
+            'no.such:Limit')
+        self.assertEqual(limit, None)
+
+    @mock.patch.dict(limits.LimitMeta._registry)
+    @mock.patch.object(utils, 'import_class', side_effect=ImportError)
+    def test_hydrate_import_error(self, mock_import_class):
+        expected = dict(
+            uri='uri',
+            value=10,
+            unit='second',
+            verbs=['GET', 'PUT'],
+            requirements=dict(foo=r'\..*', bar=r'.\.*'),
+            use=['baz'],
+            continue_scan=False,
+            )
+        exemplar = dict(limit_class='no.such:Limit')
+        exemplar.update(expected)
+        limit = limits.Limit.hydrate('db', exemplar)
+
+        mock_import_class.assert_called_once_with(
+            'no.such:Limit')
+        self.assertEqual(limit, None)
+
+    def test_dehydrate(self):
+        exemplar = dict(
+            uuid='fake_uuid',
+            uri='uri',
+            value=10,
+            unit='second',
+            verbs=['GET', 'PUT'],
+            requirements=dict(foo=r'\..*', bar=r'.\.*'),
+            queries=['spam'],
+            use=['baz'],
+            continue_scan=False,
+            )
+        expected = dict(limit_class='tests.unit.test_limits:LimitTest1')
+        expected.update(exemplar)
+        limit = LimitTest1('db', **exemplar)
+
+        self.assertEqual(limit.dehydrate(), expected)
