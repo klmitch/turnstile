@@ -815,6 +815,691 @@ class TestLimit(unittest2.TestCase):
         self.assertEqual(key, "1234")
         mock_BucketKey.assert_called_once_with('fake_uuid', params)
 
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_basic(self, mock_key, mock_filter, mock_BucketLoader,
+                          mock_time, mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with({}, dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        self.assertEqual(environ, {})
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_queries_notpresent(self, mock_key, mock_filter,
+                                       mock_BucketLoader, mock_time,
+                                       mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'],
+                             queries=['query'])
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        self.assertFalse(mock_filter.called)
+        self.assertFalse(mock_key.called)
+        self.assertEqual(len(db.method_calls), 0)
+        self.assertFalse(mock_BucketLoader.called)
+        self.assertEqual(environ, {})
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_queries_missing(self, mock_key, mock_filter,
+                                    mock_BucketLoader, mock_time,
+                                    mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'],
+                             queries=['query'])
+        environ = dict(QUERY_STRING='noquery=boofar')
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        self.assertFalse(mock_filter.called)
+        self.assertFalse(mock_key.called)
+        self.assertEqual(len(db.method_calls), 0)
+        self.assertFalse(mock_BucketLoader.called)
+        self.assertEqual(environ, dict(QUERY_STRING='noquery=boofar'))
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_queries(self, mock_key, mock_filter, mock_BucketLoader,
+                            mock_time, mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'],
+                             queries=['query'])
+        environ = dict(QUERY_STRING='query=spam')
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with(dict(QUERY_STRING='query=spam'),
+                                            dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        self.assertEqual(environ, dict(QUERY_STRING='query=spam'))
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter')
+    @mock.patch.object(limits.Limit, 'key')
+    def test_filter_use(self, mock_key, mock_filter, mock_BucketLoader,
+                        mock_time, mock_uuid4, mock_dumps):
+        filter_params = {}
+        key_params = {}
+
+        def filter_se(environ, params, unused):
+            filter_params.update(params)
+            return None
+
+        def key_se(params):
+            key_params.update(params)
+            return 'bucket_key'
+
+        mock_filter.side_effect = filter_se
+        mock_key.side_effect = key_se
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param2'])
+        environ = {}
+        params = dict(param1='spam', param2='ni')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with({}, params, dict(param1='spam'))
+        self.assertEqual(filter_params, dict(param2='ni'))
+        mock_key.assert_called_once_with(params)
+        self.assertEqual(key_params, dict(param2='ni'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param1='spam', param2='ni'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        self.assertEqual(environ, {})
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter')
+    @mock.patch.object(limits.Limit, 'key')
+    def test_filter_use_empty(self, mock_key, mock_filter, mock_BucketLoader,
+                              mock_time, mock_uuid4, mock_dumps):
+        filter_params = {}
+        key_params = {}
+
+        def filter_se(environ, params, unused):
+            filter_params.update(params)
+            return None
+
+        def key_se(params):
+            key_params.update(params)
+            return 'bucket_key'
+
+        mock_filter.side_effect = filter_se
+        mock_key.side_effect = key_se
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1)
+        environ = {}
+        params = dict(param1='spam', param2='ni')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with({}, params,
+                                            dict(param1='spam', param2='ni'))
+        self.assertEqual(filter_params, {})
+        mock_key.assert_called_once_with(params)
+        self.assertEqual(key_params, {})
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param1='spam', param2='ni'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        self.assertEqual(environ, {})
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', side_effect=limits.DeferLimit)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_defer(self, mock_key, mock_filter, mock_BucketLoader,
+                          mock_time, mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with({}, dict(param='test'), {})
+        self.assertFalse(mock_key.called)
+        self.assertEqual(len(db.method_calls), 0)
+        self.assertFalse(mock_BucketLoader.called)
+        self.assertEqual(environ, {})
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter')
+    @mock.patch.object(limits.Limit, 'key')
+    def test_filter_hook(self, mock_key, mock_filter, mock_BucketLoader,
+                         mock_time, mock_uuid4, mock_dumps):
+        filter_params = {}
+        key_params = {}
+
+        def filter_se(environ, params, unused):
+            filter_params.update(params)
+            params['filter'] = 'add'
+            return dict(additional='nothing')
+
+        def key_se(params):
+            key_params.update(params)
+            return 'bucket_key'
+
+        mock_filter.side_effect = filter_se
+        mock_key.side_effect = key_se
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with({}, params, {})
+        self.assertEqual(filter_params, dict(param='test'))
+        mock_key.assert_called_once_with(params)
+        self.assertEqual(key_params, dict(param='test', filter='add'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test', filter='add',
+                               additional='nothing'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        self.assertEqual(environ, {})
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_delay(self, mock_key, mock_filter, mock_BucketLoader,
+                          mock_time, mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=10,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with(environ, dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        self.assertEqual(environ, {
+            'turnstile.delay': [
+                (10, limit, mock_BucketLoader.return_value.bucket),
+            ],
+        })
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_bucket_set(self, mock_key, mock_filter, mock_BucketLoader,
+                               mock_time, mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {'turnstile.bucket_set': 'bucket_set'}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with(environ, dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+            mock.call.zadd('bucket_set', 1000010, 'bucket_key')
+        ])
+        self.assertEqual(len(db.method_calls), 5)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        self.assertEqual(environ, {'turnstile.bucket_set': 'bucket_set'})
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_compactor_noupdates(self, mock_key, mock_filter,
+                                        mock_BucketLoader, mock_time,
+                                        mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {'turnstile.conf': dict(compactor={})}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with(environ, dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        self.assertFalse(mock_BucketLoader.return_value.need_summary.called)
+        self.assertEqual(environ, {'turnstile.conf': dict(compactor={})})
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_compactor_badupdates(self, mock_key, mock_filter,
+                                         mock_BucketLoader, mock_time,
+                                         mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(
+            delay=None,
+            bucket=mock.Mock(expire=1000010),
+        )
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {'turnstile.conf': dict(compactor=dict(max_updates='foo'))}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with(environ, dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        self.assertFalse(mock_BucketLoader.return_value.need_summary.called)
+        self.assertEqual(environ, {
+            'turnstile.conf': dict(compactor=dict(max_updates='foo')),
+        })
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_compactor_unneeded(self, mock_key, mock_filter,
+                                       mock_BucketLoader, mock_time,
+                                       mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(**{
+            'delay': None,
+            'bucket': mock.Mock(expire=1000010),
+            'need_summary.return_value': False,
+        })
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {'turnstile.conf': dict(compactor=dict(max_updates='10'))}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with(environ, dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        mock_BucketLoader.return_value.need_summary.assert_called_once_with(10)
+        self.assertEqual(environ, {
+            'turnstile.conf': dict(compactor=dict(max_updates='10')),
+        })
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.1)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_compactor_needed(self, mock_key, mock_filter,
+                                     mock_BucketLoader, mock_time,
+                                     mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(**{
+            'delay': None,
+            'bucket': mock.Mock(expire=1000010),
+            'need_summary.return_value': True,
+        })
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {'turnstile.conf': dict(compactor=dict(max_updates='10'))}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with(environ, dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.1,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+            mock.call.zadd('compactor', 1000001, 'bucket_key'),
+        ])
+        self.assertEqual(len(db.method_calls), 5)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        mock_BucketLoader.return_value.need_summary.assert_called_once_with(10)
+        self.assertEqual(environ, {
+            'turnstile.conf': dict(compactor=dict(max_updates='10')),
+        })
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.1)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_compactor_needed_altkey(self, mock_key, mock_filter,
+                                            mock_BucketLoader, mock_time,
+                                            mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(**{
+            'delay': None,
+            'bucket': mock.Mock(expire=1000010),
+            'need_summary.return_value': True,
+        })
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {
+            'turnstile.conf': {
+                'compactor': dict(max_updates='10', compactor_key='alt_key'),
+            },
+        }
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with(environ, dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.1,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+            mock.call.zadd('alt_key', 1000001, 'bucket_key'),
+        ])
+        self.assertEqual(len(db.method_calls), 5)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        mock_BucketLoader.return_value.need_summary.assert_called_once_with(10)
+        self.assertEqual(environ, {
+            'turnstile.conf': {
+                'compactor': dict(max_updates='10', compactor_key='alt_key'),
+            },
+        })
+
     def test_format(self):
         expected = ("This request was rate-limited.  Please retry your "
                     "request after 1970-01-12T13:46:40Z.")

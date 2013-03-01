@@ -841,22 +841,58 @@ class Limit(object):
         params.update(unused)
         params.update(additional)
 
-        def process_bucket(bucket):
-            # Determine the delay for the message
-            delay = bucket.delay(params)
+        # Get the current time
+        now = time.time()
 
-            return (bucket, delay)
+        # Allow up to a minute to mutate the bucket record.  If no
+        # bucket exists currently, this is essentially a no-op, and
+        # the bucket won't expire anyway, once the update record is
+        # pushed.
+        self.db.expire(key, 60)
 
-        # Perform a safe fetch and update of the bucket
-        bucket, delay = self.db.safe_update(key, self.bucket_class,
-                                            process_bucket, self, key)
+        # Push an update record
+        update_uuid = str(uuid.uuid4())
+        update = {
+            'uuid': update_uuid,
+            'update': {
+                'params': params,
+                'time': now,
+            },
+        }
+        self.db.rpush(key, msgpack.dumps(update))
+
+        # Now suck in the bucket
+        records = self.db.lrange(key, 0, -1)
+        loader = BucketLoader(self.bucket_class, self.db, self, key, records)
+
+        # Set the expire on the bucket
+        self.db.expireat(key, loader.bucket.expire)
 
         # If we found a delay, store the particulars in the
         # environment; this will later be sorted and an error message
         # corresponding to the longest delay returned.
-        if delay is not None:
+        if loader.delay is not None:
             environ.setdefault('turnstile.delay', [])
-            environ['turnstile.delay'].append((delay, self, bucket))
+            environ['turnstile.delay'].append((loader.delay, self,
+                                               loader.bucket))
+
+        # Determine if we should initialize the compactor algorithm on
+        # this bucket
+        if 'turnstile.conf' in environ:
+            config = environ['turnstile.conf']['compactor']
+            try:
+                max_updates = int(config['max_updates'])
+            except (KeyError, ValueError):
+                max_updates = None
+            if max_updates and loader.need_summary(max_updates):
+                compactor_key = config.get('compactor_key', 'compactor')
+                self.db.zadd(compactor_key, int(math.ceil(now)), key)
+
+        # Finally, if desired, add the bucket key to a desired
+        # database set
+        set_name = environ.get('turnstile.bucket_set')
+        if set_name:
+            self.db.zadd(set_name, loader.bucket.expire, key)
 
         # Should we continue the route scan?
         return not self.continue_scan
