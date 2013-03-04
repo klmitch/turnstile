@@ -184,21 +184,53 @@ class TurnstileMiddleware(object):
         # We will lazy-load the database
         self._db = None
 
-        # Set up request preprocessors
+        # Set up request pre- and post-processors
         self.preprocessors = []
-        for preproc in self.conf.get('preprocess', '').split():
-            # Allow ImportError to bubble up
-            self.preprocessors.append(utils.import_class(preproc))
-
-        # Set up request postprocessors
         self.postprocessors = []
-        for postproc in self.conf.get('postprocess', '').split():
-            # Allow ImportError to bubble up
-            self.postprocessors.append(utils.import_class(postproc))
+        enable = self.conf.get('enable')
+        if enable is not None:
+            # Use the enabler syntax
+            for proc in enable.split():
+                # Try the preprocessor
+                preproc = utils.find_entrypoint('turnstile.preprocessor', proc)
+                if preproc:
+                    self.preprocessors.append(preproc)
+
+                # Now the postprocessor
+                postproc = utils.find_entrypoint('turnstile.postprocessor',
+                                                 proc)
+                if postproc:
+                    # Note the reversed order
+                    self.postprocessors.insert(0, postproc)
+        else:
+            # Using the classic syntax; grab preprocessors...
+            for preproc in self.conf.get('preprocess', '').split():
+                if ':' in preproc:
+                    # Backwards compatibility
+                    klass = utils.import_class(preproc)
+                else:
+                    klass = utils.find_entrypoint('turnstile.preprocessor',
+                                                  preproc)
+                    if klass is None:
+                        raise ImportError("Cannot import preprocessor %r" %
+                                          preproc)
+                self.preprocessors.append(klass)
+
+            # And now the postprocessors...
+            for postproc in self.conf.get('postprocess', '').split():
+                if ':' in postproc:
+                    # Backwards compatibility
+                    klass = utils.import_class(postproc)
+                else:
+                    klass = utils.find_entrypoint('turnstile.postprocessor',
+                                                  postproc)
+                    if klass is None:
+                        raise ImportError("Cannot import postprocessor %r" %
+                                          postproc)
+                self.postprocessors.append(klass)
 
         # Initialize the control daemon
-        if config.Config.to_bool(self.conf['control'].get('remote', 'no'),
-                                 False):
+        if self.conf.to_bool(self.conf['control'].get('remote', 'no'), False):
             self.control_daemon = remote.RemoteControlDaemon(self, self.conf)
         else:
             self.control_daemon = control.ControlDaemon(self, self.conf)
@@ -283,7 +315,6 @@ class TurnstileMiddleware(object):
                 preproc(self, environ)
 
         # Make configuration available to the limit classes as well
-        environ['turnstile.config'] = self.config  # compat
         environ['turnstile.conf'] = self.conf
 
         # Now, if we have a mapper, run through it
@@ -331,15 +362,6 @@ class TurnstileMiddleware(object):
         # Return the response
         start_response(status, headers.items())
         return entity
-
-    @property
-    def config(self):
-        """
-        Obtain the configuration as a multi-level dictionary.
-        Provided for backwards compatibility.
-        """
-
-        return self.conf._config
 
     @property
     def db(self):
