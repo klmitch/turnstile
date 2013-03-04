@@ -141,7 +141,14 @@ def turnstile_filter(global_conf, **local_conf):
     # Select the appropriate middleware class to return
     klass = TurnstileMiddleware
     if 'turnstile' in local_conf:
-        klass = utils.import_class(local_conf['turnstile'])
+        klass_name = local_conf['turnstile']
+        if ':' in klass_name:
+            # Backwards compatibility
+            klass = utils.import_class(local_conf['turnstile'])
+        else:
+            klass = utils.find_entrypoint('turnstile.middleware', klass_name)
+            if klass is None:
+                raise ImportError("Cannot import entrypoint %r" % klass_name)
 
     def wrapper(app):
         return klass(app, local_conf)

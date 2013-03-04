@@ -13,9 +13,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import mock
 import unittest2
 
 from turnstile import middleware
+from turnstile import utils
 
 
 class TestHeadersDict(unittest2.TestCase):
@@ -115,3 +117,79 @@ class TestHeadersDict(unittest2.TestCase):
 
         result = sorted(list(hd.values()))
         self.assertEqual(result, ['VALUE', 'value'])
+
+
+class TestTurnstileFilter(unittest2.TestCase):
+    @mock.patch.object(middleware, 'TurnstileMiddleware',
+                       return_value='middleware')
+    @mock.patch.object(utils, 'import_class')
+    @mock.patch.object(utils, 'find_entrypoint')
+    def test_filter_basic(self, mock_find_entrypoint, mock_import_class,
+                          mock_TurnstileMiddleware):
+        midware_class = middleware.turnstile_filter({})
+
+        self.assertFalse(mock_import_class.called)
+        self.assertFalse(mock_find_entrypoint.called)
+        self.assertFalse(mock_TurnstileMiddleware.called)
+
+        midware = midware_class('app')
+
+        mock_TurnstileMiddleware.assert_called_once_with('app', {})
+        self.assertEqual(midware, 'middleware')
+
+    @mock.patch.object(middleware, 'TurnstileMiddleware')
+    @mock.patch.object(utils, 'import_class',
+                       return_value=mock.Mock(return_value='middleware'))
+    @mock.patch.object(utils, 'find_entrypoint')
+    def test_filter_alt_middleware_old(self, mock_find_entrypoint,
+                                       mock_import_class,
+                                       mock_TurnstileMiddleware):
+        midware_class = middleware.turnstile_filter({}, turnstile='spam:ni')
+
+        mock_import_class.assert_called_once_with('spam:ni')
+        self.assertFalse(mock_import_class.return_value.called)
+        self.assertFalse(mock_find_entrypoint.called)
+        self.assertFalse(mock_TurnstileMiddleware.called)
+
+        midware = midware_class('app')
+
+        mock_import_class.return_value.assert_called_once_with(
+            'app', dict(turnstile='spam:ni'))
+        self.assertFalse(mock_TurnstileMiddleware.called)
+        self.assertEqual(midware, 'middleware')
+
+    @mock.patch.object(middleware, 'TurnstileMiddleware')
+    @mock.patch.object(utils, 'import_class')
+    @mock.patch.object(utils, 'find_entrypoint',
+                       return_value=mock.Mock(return_value='middleware'))
+    def test_filter_alt_middleware(self, mock_find_entrypoint,
+                                   mock_import_class,
+                                   mock_TurnstileMiddleware):
+        midware_class = middleware.turnstile_filter({}, turnstile='spam')
+
+        self.assertFalse(mock_import_class.called)
+        mock_find_entrypoint.assert_called_once_with(
+            'turnstile.middleware', 'spam')
+        self.assertFalse(mock_find_entrypoint.return_value.called)
+        self.assertFalse(mock_TurnstileMiddleware.called)
+
+        midware = midware_class('app')
+
+        mock_find_entrypoint.return_value.assert_called_once_with(
+            'app', dict(turnstile='spam'))
+        self.assertFalse(mock_TurnstileMiddleware.called)
+        self.assertEqual(midware, 'middleware')
+
+    @mock.patch.object(middleware, 'TurnstileMiddleware')
+    @mock.patch.object(utils, 'import_class')
+    @mock.patch.object(utils, 'find_entrypoint', return_value=None)
+    def test_filter_alt_middleware_notfound(self, mock_find_entrypoint,
+                                            mock_import_class,
+                                            mock_TurnstileMiddleware):
+        self.assertRaises(ImportError, middleware.turnstile_filter, {},
+                          turnstile='spam')
+
+        self.assertFalse(mock_import_class.called)
+        mock_find_entrypoint.assert_called_once_with(
+            'turnstile.middleware', 'spam')
+        self.assertFalse(mock_TurnstileMiddleware.called)

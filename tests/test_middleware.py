@@ -91,36 +91,6 @@ class Response(object):
         self.headers = dict(headers)
 
 
-class TestTurnstileFilter(tests.TestCase):
-    imports = {
-        'FakeMiddleware': FakeMiddleware,
-        }
-
-    def test_filter_factory(self):
-        self.stubs.Set(middleware, 'TurnstileMiddleware',
-                       tests.GenericFakeClass)
-
-        result = middleware.turnstile_filter({}, foo='value1', bar='value2')
-        self.assertTrue(callable(result))
-
-        obj = result('app')
-        self.assertIsInstance(obj, tests.GenericFakeClass)
-        self.assertEqual(obj.args, ('app', dict(foo='value1', bar='value2')))
-
-    def test_filter_factory_alternate_middleware(self):
-        result = middleware.turnstile_filter({}, foo='value1', bar='value2',
-                                             turnstile='FakeMiddleware')
-        self.assertTrue(callable(result))
-
-        obj = result('app')
-        self.assertIsInstance(obj, FakeMiddleware)
-        self.assertEqual(obj.args, ('app', dict(
-                    foo='value1',
-                    bar='value2',
-                    turnstile='FakeMiddleware',
-                    )))
-
-
 class TestTurnstileMiddleware(tests.TestCase):
     imports = {
         'preproc1': preproc1,
