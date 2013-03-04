@@ -95,8 +95,8 @@ class Config(object):
         self._config = {
             None: {
                 'status': '413 Request Entity Too Large',
-                },
-            }
+            },
+        }
 
         # Handle passed-in dict (middleware)
         if conf_dict:

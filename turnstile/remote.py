@@ -471,8 +471,8 @@ class SimpleRPC(object):
                         # Look up the function
                         func = getattr(self, funcname, None)
                         if (not func or
-                            not callable(func) or
-                            not getattr(func, '_remote', False)):
+                                not callable(func) or
+                                not getattr(func, '_remote', False)):
                             raise AttributeError(
                                 "%r object has no attribute %r" %
                                 (self.__class__.__name__, funcname))
@@ -605,7 +605,7 @@ class RemoteControlDaemon(control.ControlDaemon):
             'remote.host': lambda x: x,
             'remote.port': int,
             'remote.authkey': lambda x: x,
-            }
+        }
         values = {}
         for conf_key, xform in required.items():
             try:

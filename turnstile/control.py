@@ -175,7 +175,7 @@ class ControlDaemon(object):
         for msg in pubsub.listen():
             # Only interested in messages to our reload channel
             if (msg['type'] in ('pmessage', 'message') and
-                msg['channel'] == channel):
+                    msg['channel'] == channel):
                 # Figure out what kind of message this is
                 command, _sep, args = msg['data'].partition(':')
 

@@ -249,7 +249,7 @@ def setup_limits():
 
     parser = argparse.ArgumentParser(
         description="Set up or update limits in the Redis database.",
-        )
+    )
 
     parser.add_argument('config',
                         help="Name of the configuration file, for connecting "
@@ -383,7 +383,7 @@ def dump_limits():
 
     parser = argparse.ArgumentParser(
         description="Dump the current limits from the Redis database.",
-        )
+    )
 
     parser.add_argument('config',
                         help="Name of the configuration file, for connecting "
@@ -427,7 +427,7 @@ def remote_daemon():
 
     parser = argparse.ArgumentParser(
         description="Run the external control daemon.",
-        )
+    )
 
     parser.add_argument('config',
                         help="Name of the configuration file.")
