@@ -18,46 +18,43 @@ import sys
 import pkg_resources
 
 
-def import_class(import_str):
-    """
-    Returns a class from a string including module and class.
-
-    Note: No sanity check is performed to ensure that the imported
-    symbol truly is a class.
-
-    :param import_str: The string to import.  Consists of a module
-                       name and the name of the class in that module,
-                       separated by a colon (':').
-
-    :returns: The desired class.
-    """
-
-    try:
-        return pkg_resources.EntryPoint.parse("x=" + import_str).load(False)
-    except (ImportError, pkg_resources.UnknownExtra) as exc:
-        # Convert it into an import error
-        raise ImportError("Failed to import %s: %s" % (import_str, exc))
-
-
-def find_entrypoint(group, name):
+def find_entrypoint(group, name, compat=True, required=False):
     """
     Finds the first available entrypoint with the given name in the
     given group.
 
-    :param group: The entrypoint group the name can be found in.
+    :param group: The entrypoint group the name can be found in.  If
+                  None, the name is not presumed to be an entrypoint.
     :param name: The name of the entrypoint.
+    :param compat: If True, and if the name parameter contains a ':',
+                   the name will be interpreted as a module name and
+                   an object name, separated by a colon.  This is
+                   provided for compatibility.
+    :param required: If True, and no corresponding entrypoint can be
+                     found, an ImportError will be raised.  If False
+                     (the default), None will be returned instead.
 
     :returns: The entrypoint object, or None if one could not be
               loaded.
     """
 
-    for ep in pkg_resources.iter_entry_points(group, name):
+    if group is None or (compat and ':' in name):
         try:
-            # Load and return the object
-            return ep.load()
-        except (ImportError, pkg_resources.UnknownExtra):
-            # Couldn't load it; try the next one
-            continue
+            return pkg_resources.EntryPoint.parse("x=" + name).load(False)
+        except (ImportError, pkg_resources.UnknownExtra) as exc:
+            pass
+    else:
+        for ep in pkg_resources.iter_entry_points(group, name):
+            try:
+                # Load and return the object
+                return ep.load()
+            except (ImportError, pkg_resources.UnknownExtra):
+                # Couldn't load it; try the next one
+                continue
+
+    # Raise an ImportError if requested
+    if required:
+        raise ImportError("Cannot import %r entrypoint %r" % (group, name))
 
     # Couldn't find one...
     return None

@@ -648,8 +648,8 @@ class TestLimit(unittest2.TestCase):
                          "uuid='fake_uuid' value=10 verbs=['GET', 'PUT'] "
                          "at 0x%x>" % id(limit))
 
-    @mock.patch.object(utils, 'import_class')
-    def test_hydrate_from_registry(self, mock_import_class):
+    @mock.patch.object(utils, 'find_entrypoint')
+    def test_hydrate_from_registry(self, mock_find_entrypoint):
         expected = dict(
             uri='uri',
             value=10,
@@ -663,15 +663,15 @@ class TestLimit(unittest2.TestCase):
         exemplar.update(expected)
         limit = limits.Limit.hydrate('db', exemplar)
 
-        self.assertFalse(mock_import_class.called)
+        self.assertFalse(mock_find_entrypoint.called)
         self.assertEqual(limit.__class__, limits.Limit)
         self.assertEqual(limit.db, 'db')
         for key, value in expected.items():
             self.assertEqual(getattr(limit, key), value)
 
     @mock.patch.dict(limits.LimitMeta._registry)
-    @mock.patch.object(utils, 'import_class')
-    def test_hydrate_no_match(self, mock_import_class):
+    @mock.patch.object(utils, 'find_entrypoint')
+    def test_hydrate_no_match(self, mock_find_entrypoint):
         expected = dict(
             uri='uri',
             value=10,
@@ -685,28 +685,8 @@ class TestLimit(unittest2.TestCase):
         exemplar.update(expected)
         limit = limits.Limit.hydrate('db', exemplar)
 
-        mock_import_class.assert_called_once_with(
-            'no.such:Limit')
-        self.assertEqual(limit, None)
-
-    @mock.patch.dict(limits.LimitMeta._registry)
-    @mock.patch.object(utils, 'import_class', side_effect=ImportError)
-    def test_hydrate_import_error(self, mock_import_class):
-        expected = dict(
-            uri='uri',
-            value=10,
-            unit='second',
-            verbs=['GET', 'PUT'],
-            requirements=dict(foo=r'\..*', bar=r'.\.*'),
-            use=['baz'],
-            continue_scan=False,
-        )
-        exemplar = dict(limit_class='no.such:Limit')
-        exemplar.update(expected)
-        limit = limits.Limit.hydrate('db', exemplar)
-
-        mock_import_class.assert_called_once_with(
-            'no.such:Limit')
+        mock_find_entrypoint.assert_called_once_with(
+            None, 'no.such:Limit')
         self.assertEqual(limit, None)
 
     def test_dehydrate(self):

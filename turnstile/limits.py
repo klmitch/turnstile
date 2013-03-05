@@ -696,11 +696,7 @@ class Limit(object):
 
         # Is it in the registry yet?
         if cls_name not in cls._registry:
-            try:
-                utils.import_class(cls_name)
-            except ImportError:
-                # If we failed to import, ignore...
-                pass
+            utils.find_entrypoint(None, cls_name)
 
         # Look it up in the registry
         cls = cls._registry.get(cls_name)

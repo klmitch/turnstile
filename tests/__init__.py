@@ -43,15 +43,15 @@ class TestCase(unittest2.TestCase):
     def setUp(self):
         self.stubs = stubout.StubOutForTesting()
 
-        def fake_import(import_str):
+        def fake_find_entrypoint(group, name, compat=True, required=False):
             try:
-                return self.imports[import_str]
+                return self.imports[name]
             except KeyError as exc:
                 # Convert into an ImportError
                 raise ImportError("Failed to import %s: %s" %
-                                  (import_str, exc))
+                                  (name, exc))
 
-        self.stubs.Set(utils, 'import_class', fake_import)
+        self.stubs.Set(utils, 'find_entrypoint', fake_find_entrypoint)
 
         # Clear the log messages
         test_handler.get_messages(True)

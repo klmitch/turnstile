@@ -196,7 +196,7 @@ def remote(func):
             raise Exception("Catastrophic error from server: %s" %
                             payload[0])
         elif cmd == 'EXC':
-            exc_type = utils.import_class(payload[0])
+            exc_type = utils.find_entrypoint(None, payload[0])
             raise exc_type(payload[1])
         elif cmd != 'RES':
             self.close()

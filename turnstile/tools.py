@@ -65,7 +65,8 @@ def parse_limit_node(db, idx, limit):
 
     # First, try to import the class; this will raise ImportError if
     # we can't import it
-    klass = utils.import_class(limit.get('class'))
+    klass = utils.find_entrypoint('turnstile.limit', limit.get('class'),
+                                  required=True)
 
     # Build the list of required attributes
     required = set(k for k, v in klass.attrs.items()

@@ -24,32 +24,6 @@ class TestException(Exception):
     pass
 
 
-class TestImportClass(unittest2.TestCase):
-    @mock.patch.object(pkg_resources.EntryPoint, 'parse',
-                       return_value=mock.Mock(**{
-                           'load.return_value': 'class',
-                       }))
-    def test_success(self, mock_parse):
-        result = utils.import_class('test:class')
-
-        mock_parse.assert_called_once_with('x=test:class')
-        mock_parse.return_value.load.assert_called_once_with(False)
-
-    @mock.patch.object(pkg_resources.EntryPoint, 'parse',
-                       return_value=mock.Mock(**{
-                           'load.side_effect': ImportError,
-                       }))
-    def test_with_import_error(self, mock_parse):
-        self.assertRaises(ImportError, utils.import_class, 'test:class')
-
-    @mock.patch.object(pkg_resources.EntryPoint, 'parse',
-                       return_value=mock.Mock(**{
-                           'load.side_effect': pkg_resources.UnknownExtra,
-                       }))
-    def test_with_import_error(self, mock_parse):
-        self.assertRaises(ImportError, utils.import_class, 'test:class')
-
-
 class TestFindEntryPoint(unittest2.TestCase):
     @mock.patch.object(pkg_resources, 'iter_entry_points',
                        return_value=[mock.Mock(**{
@@ -96,6 +70,81 @@ class TestFindEntryPoint(unittest2.TestCase):
         self.assertEqual(result, None)
         mock_iter_entry_points.assert_called_once_with(
             'test.group', 'endpoint')
+
+    @mock.patch.object(pkg_resources, 'iter_entry_points', return_value=[])
+    def test_no_endpoints_required(self, mock_iter_entry_points):
+        self.assertRaises(ImportError, utils.find_entrypoint,
+                          'test.group', 'endpoint', required=True)
+
+        mock_iter_entry_points.assert_called_once_with(
+            'test.group', 'endpoint')
+
+    @mock.patch.object(pkg_resources.EntryPoint, 'parse',
+                       return_value=mock.Mock(**{
+                           'load.return_value': 'class',
+                       }))
+    @mock.patch.object(pkg_resources, 'iter_entry_points', return_value=[])
+    def test_no_compat(self, mock_iter_entry_points, mock_parse):
+        result = utils.find_entrypoint('test.group', 'spam:ni', compat=False)
+
+        self.assertEqual(result, None)
+        mock_iter_entry_points.assert_called_once_with(
+            'test.group', 'spam:ni')
+        self.assertFalse(mock_parse.called)
+        self.assertFalse(mock_parse.return_value.load.called)
+
+    @mock.patch.object(pkg_resources.EntryPoint, 'parse',
+                       return_value=mock.Mock(**{
+                           'load.return_value': 'class',
+                       }))
+    @mock.patch.object(pkg_resources, 'iter_entry_points', return_value=[])
+    def test_no_group(self, mock_iter_entry_points, mock_parse):
+        result = utils.find_entrypoint(None, 'spam:ni', compat=False)
+
+        self.assertEqual(result, 'class')
+        self.assertFalse(mock_iter_entry_points.called)
+        mock_parse.assert_called_once_with('x=spam:ni')
+        mock_parse.return_value.load.assert_called_once_with(False)
+
+    @mock.patch.object(pkg_resources.EntryPoint, 'parse',
+                       return_value=mock.Mock(**{
+                           'load.return_value': 'class',
+                       }))
+    @mock.patch.object(pkg_resources, 'iter_entry_points', return_value=[])
+    def test_with_compat(self, mock_iter_entry_points, mock_parse):
+        result = utils.find_entrypoint('test.group', 'spam:ni')
+
+        self.assertEqual(result, 'class')
+        self.assertFalse(mock_iter_entry_points.called)
+        mock_parse.assert_called_once_with('x=spam:ni')
+        mock_parse.return_value.load.assert_called_once_with(False)
+
+    @mock.patch.object(pkg_resources.EntryPoint, 'parse',
+                       return_value=mock.Mock(**{
+                           'load.side_effect': ImportError,
+                       }))
+    @mock.patch.object(pkg_resources, 'iter_entry_points', return_value=[])
+    def test_with_compat_importerror(self, mock_iter_entry_points, mock_parse):
+        result = utils.find_entrypoint('test.group', 'spam:ni')
+
+        self.assertEqual(result, None)
+        self.assertFalse(mock_iter_entry_points.called)
+        mock_parse.assert_called_once_with('x=spam:ni')
+        mock_parse.return_value.load.assert_called_once_with(False)
+
+    @mock.patch.object(pkg_resources.EntryPoint, 'parse',
+                       return_value=mock.Mock(**{
+                           'load.side_effect': pkg_resources.UnknownExtra,
+                       }))
+    @mock.patch.object(pkg_resources, 'iter_entry_points', return_value=[])
+    def test_with_compat_unknownextra(self, mock_iter_entry_points,
+                                      mock_parse):
+        result = utils.find_entrypoint('test.group', 'spam:ni')
+
+        self.assertEqual(result, None)
+        self.assertFalse(mock_iter_entry_points.called)
+        mock_parse.assert_called_once_with('x=spam:ni')
+        mock_parse.return_value.load.assert_called_once_with(False)
 
 
 class TestIgnoreExcept(unittest2.TestCase):

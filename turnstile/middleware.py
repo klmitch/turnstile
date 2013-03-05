@@ -141,14 +141,8 @@ def turnstile_filter(global_conf, **local_conf):
     # Select the appropriate middleware class to return
     klass = TurnstileMiddleware
     if 'turnstile' in local_conf:
-        klass_name = local_conf['turnstile']
-        if ':' in klass_name:
-            # Backwards compatibility
-            klass = utils.import_class(local_conf['turnstile'])
-        else:
-            klass = utils.find_entrypoint('turnstile.middleware', klass_name)
-            if klass is None:
-                raise ImportError("Cannot import entrypoint %r" % klass_name)
+        klass = utils.find_entrypoint('turnstile.middleware',
+                                      local_conf['turnstile'], required=True)
 
     def wrapper(app):
         return klass(app, local_conf)
@@ -192,41 +186,28 @@ class TurnstileMiddleware(object):
             # Use the enabler syntax
             for proc in enable.split():
                 # Try the preprocessor
-                preproc = utils.find_entrypoint('turnstile.preprocessor', proc)
+                preproc = utils.find_entrypoint('turnstile.preprocessor',
+                                                proc, compat=False)
                 if preproc:
                     self.preprocessors.append(preproc)
 
                 # Now the postprocessor
                 postproc = utils.find_entrypoint('turnstile.postprocessor',
-                                                 proc)
+                                                 proc, compat=False)
                 if postproc:
                     # Note the reversed order
                     self.postprocessors.insert(0, postproc)
         else:
             # Using the classic syntax; grab preprocessors...
             for preproc in self.conf.get('preprocess', '').split():
-                if ':' in preproc:
-                    # Backwards compatibility
-                    klass = utils.import_class(preproc)
-                else:
-                    klass = utils.find_entrypoint('turnstile.preprocessor',
-                                                  preproc)
-                    if klass is None:
-                        raise ImportError("Cannot import preprocessor %r" %
-                                          preproc)
+                klass = utils.find_entrypoint('turnstile.preprocessor',
+                                              preproc, required=True)
                 self.preprocessors.append(klass)
 
             # And now the postprocessors...
             for postproc in self.conf.get('postprocess', '').split():
-                if ':' in postproc:
-                    # Backwards compatibility
-                    klass = utils.import_class(postproc)
-                else:
-                    klass = utils.find_entrypoint('turnstile.postprocessor',
-                                                  postproc)
-                    if klass is None:
-                        raise ImportError("Cannot import postprocessor %r" %
-                                          postproc)
+                klass = utils.find_entrypoint('turnstile.postprocessor',
+                                              postproc, required=True)
                 self.postprocessors.append(klass)
 
         # Initialize the control daemon

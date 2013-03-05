@@ -192,11 +192,13 @@ def initialize(config):
         if key.startswith('connection_pool.'):
             _dummy, _sep, varname = key.partition('.')
             if varname == 'connection_class':
-                cpool[varname] = utils.import_class(value)
+                cpool[varname] = utils.find_entrypoint(
+                    'turnstile.connection_class', value, required=True)
             elif varname == 'max_connections':
                 cpool[varname] = int(value)
             elif varname == 'parser_class':
-                cpool[varname] = utils.import_class(value)
+                cpool[varname] = utils.find_entrypoint(
+                    'turnstile.parser_class', value, required=True)
             else:
                 cpool[varname] = value
     if cpool:
@@ -204,7 +206,9 @@ def initialize(config):
 
     # Use custom connection pool class if requested...
     if 'connection_pool' in config:
-        cpool_class = utils.import_class(config['connection_pool'])
+        cpool_class = utils.find_entrypoint('turnstile.connection_pool',
+                                            config['connection_pool'],
+                                            required=True)
 
     # If we're using a connection pool, we'll need to pass the keyword
     # arguments to that instead of to redis

@@ -131,13 +131,11 @@ class TestHeadersDict(unittest2.TestCase):
 class TestTurnstileFilter(unittest2.TestCase):
     @mock.patch.object(middleware, 'TurnstileMiddleware',
                        return_value='middleware')
-    @mock.patch.object(utils, 'import_class')
     @mock.patch.object(utils, 'find_entrypoint')
-    def test_filter_basic(self, mock_find_entrypoint, mock_import_class,
+    def test_filter_basic(self, mock_find_entrypoint,
                           mock_TurnstileMiddleware):
         midware_class = middleware.turnstile_filter({})
 
-        self.assertFalse(mock_import_class.called)
         self.assertFalse(mock_find_entrypoint.called)
         self.assertFalse(mock_TurnstileMiddleware.called)
 
@@ -147,38 +145,14 @@ class TestTurnstileFilter(unittest2.TestCase):
         self.assertEqual(midware, 'middleware')
 
     @mock.patch.object(middleware, 'TurnstileMiddleware')
-    @mock.patch.object(utils, 'import_class',
-                       return_value=mock.Mock(return_value='middleware'))
-    @mock.patch.object(utils, 'find_entrypoint')
-    def test_filter_alt_middleware_old(self, mock_find_entrypoint,
-                                       mock_import_class,
-                                       mock_TurnstileMiddleware):
-        midware_class = middleware.turnstile_filter({}, turnstile='spam:ni')
-
-        mock_import_class.assert_called_once_with('spam:ni')
-        self.assertFalse(mock_import_class.return_value.called)
-        self.assertFalse(mock_find_entrypoint.called)
-        self.assertFalse(mock_TurnstileMiddleware.called)
-
-        midware = midware_class('app')
-
-        mock_import_class.return_value.assert_called_once_with(
-            'app', dict(turnstile='spam:ni'))
-        self.assertFalse(mock_TurnstileMiddleware.called)
-        self.assertEqual(midware, 'middleware')
-
-    @mock.patch.object(middleware, 'TurnstileMiddleware')
-    @mock.patch.object(utils, 'import_class')
     @mock.patch.object(utils, 'find_entrypoint',
                        return_value=mock.Mock(return_value='middleware'))
     def test_filter_alt_middleware(self, mock_find_entrypoint,
-                                   mock_import_class,
                                    mock_TurnstileMiddleware):
         midware_class = middleware.turnstile_filter({}, turnstile='spam')
 
-        self.assertFalse(mock_import_class.called)
         mock_find_entrypoint.assert_called_once_with(
-            'turnstile.middleware', 'spam')
+            'turnstile.middleware', 'spam', required=True)
         self.assertFalse(mock_find_entrypoint.return_value.called)
         self.assertFalse(mock_TurnstileMiddleware.called)
 
@@ -189,30 +163,14 @@ class TestTurnstileFilter(unittest2.TestCase):
         self.assertFalse(mock_TurnstileMiddleware.called)
         self.assertEqual(midware, 'middleware')
 
-    @mock.patch.object(middleware, 'TurnstileMiddleware')
-    @mock.patch.object(utils, 'import_class')
-    @mock.patch.object(utils, 'find_entrypoint', return_value=None)
-    def test_filter_alt_middleware_notfound(self, mock_find_entrypoint,
-                                            mock_import_class,
-                                            mock_TurnstileMiddleware):
-        self.assertRaises(ImportError, middleware.turnstile_filter, {},
-                          turnstile='spam')
-
-        self.assertFalse(mock_import_class.called)
-        mock_find_entrypoint.assert_called_once_with(
-            'turnstile.middleware', 'spam')
-        self.assertFalse(mock_TurnstileMiddleware.called)
-
 
 class TestTurnstileMiddleware(unittest2.TestCase):
-    @mock.patch.object(utils, 'import_class')
     @mock.patch.object(utils, 'find_entrypoint')
     @mock.patch.object(control, 'ControlDaemon')
     @mock.patch.object(remote, 'RemoteControlDaemon')
     @mock.patch.object(middleware.LOG, 'info')
     def test_init_basic(self, mock_info, mock_RemoteControlDaemon,
-                        mock_ControlDaemon, mock_find_entrypoint,
-                        mock_import_class):
+                        mock_ControlDaemon, mock_find_entrypoint):
         midware = middleware.TurnstileMiddleware('app', {})
 
         self.assertEqual(midware.app, 'app')
@@ -234,14 +192,12 @@ class TestTurnstileMiddleware(unittest2.TestCase):
         ])
         mock_info.assert_called_once_with("Turnstile middleware initialized")
 
-    @mock.patch.object(utils, 'import_class')
     @mock.patch.object(utils, 'find_entrypoint')
     @mock.patch.object(control, 'ControlDaemon')
     @mock.patch.object(remote, 'RemoteControlDaemon')
     @mock.patch.object(middleware.LOG, 'info')
     def test_init_remote(self, mock_info, mock_RemoteControlDaemon,
-                         mock_ControlDaemon, mock_find_entrypoint,
-                         mock_import_class):
+                         mock_ControlDaemon, mock_find_entrypoint):
         midware = middleware.TurnstileMiddleware('app', {
             'control.remote': 'yes',
         })
@@ -266,14 +222,12 @@ class TestTurnstileMiddleware(unittest2.TestCase):
         ])
         mock_info.assert_called_once_with("Turnstile middleware initialized")
 
-    @mock.patch.object(utils, 'import_class')
     @mock.patch.object(utils, 'find_entrypoint')
     @mock.patch.object(control, 'ControlDaemon')
     @mock.patch.object(remote, 'RemoteControlDaemon')
     @mock.patch.object(middleware.LOG, 'info')
     def test_init_enable(self, mock_info, mock_RemoteControlDaemon,
-                         mock_ControlDaemon, mock_find_entrypoint,
-                         mock_import_class):
+                         mock_ControlDaemon, mock_find_entrypoint):
         entrypoints = {
             'turnstile.preprocessor': {
                 'ep1': 'preproc1',
@@ -288,7 +242,8 @@ class TestTurnstileMiddleware(unittest2.TestCase):
             },
         }
 
-        mock_find_entrypoint.side_effect = lambda x, y: entrypoints[x].get(y)
+        mock_find_entrypoint.side_effect = \
+            lambda x, y, compat=True: entrypoints[x].get(y)
 
         midware = middleware.TurnstileMiddleware('app', {
             'enable': 'ep1 ep2 ep3 ep4 ep5 ep6',
@@ -323,34 +278,30 @@ class TestTurnstileMiddleware(unittest2.TestCase):
         ])
         mock_info.assert_called_once_with("Turnstile middleware initialized")
 
-    @mock.patch.object(utils, 'import_class')
     @mock.patch.object(utils, 'find_entrypoint')
     @mock.patch.object(control, 'ControlDaemon')
     @mock.patch.object(remote, 'RemoteControlDaemon')
     @mock.patch.object(middleware.LOG, 'info')
     def test_init_processors(self, mock_info, mock_RemoteControlDaemon,
-                             mock_ControlDaemon, mock_find_entrypoint,
-                             mock_import_class):
+                             mock_ControlDaemon, mock_find_entrypoint):
         entrypoints = {
             'turnstile.preprocessor': {
                 'ep1': 'preproc1',
                 'ep3': 'preproc3',
                 'ep4': 'preproc4',
                 'ep6': 'preproc6',
+                'preproc:ep5': 'preproc5',
             },
             'turnstile.postprocessor': {
                 'ep2': 'postproc2',
                 'ep4': 'postproc4',
                 'ep6': 'postproc6',
+                'postproc:ep5': 'postproc5',
             },
         }
-        classes = {
-            'preproc:ep5': 'preproc5',
-            'postproc:ep5': 'postproc5',
-        }
 
-        mock_find_entrypoint.side_effect = lambda x, y: entrypoints[x].get(y)
-        mock_import_class.side_effect = lambda x: classes[x]
+        mock_find_entrypoint.side_effect = \
+            lambda x, y, required=False: entrypoints[x].get(y)
 
         midware = middleware.TurnstileMiddleware('app', {
             'preprocess': 'ep1 ep3 ep4 preproc:ep5 ep6',
@@ -388,34 +339,6 @@ class TestTurnstileMiddleware(unittest2.TestCase):
             mock.call().start(),
         ])
         mock_info.assert_called_once_with("Turnstile middleware initialized")
-
-    @mock.patch.object(utils, 'import_class')
-    @mock.patch.object(utils, 'find_entrypoint', return_value=None)
-    @mock.patch.object(control, 'ControlDaemon')
-    @mock.patch.object(remote, 'RemoteControlDaemon')
-    @mock.patch.object(middleware.LOG, 'info')
-    def test_init_preprocessor_noentrypoint(self, mock_info,
-                                            mock_RemoteControlDaemon,
-                                            mock_ControlDaemon,
-                                            mock_find_entrypoint,
-                                            mock_import_class):
-        self.assertRaises(ImportError, middleware.TurnstileMiddleware, 'app', {
-            'preprocess': 'ep1',
-        })
-
-    @mock.patch.object(utils, 'import_class')
-    @mock.patch.object(utils, 'find_entrypoint', return_value=None)
-    @mock.patch.object(control, 'ControlDaemon')
-    @mock.patch.object(remote, 'RemoteControlDaemon')
-    @mock.patch.object(middleware.LOG, 'info')
-    def test_init_postprocessor_noentrypoint(self, mock_info,
-                                             mock_RemoteControlDaemon,
-                                             mock_ControlDaemon,
-                                             mock_find_entrypoint,
-                                             mock_import_class):
-        self.assertRaises(ImportError, middleware.TurnstileMiddleware, 'app', {
-            'postprocess': 'ep1',
-        })
 
     @mock.patch('traceback.format_exc', return_value='<traceback>')
     @mock.patch.object(control, 'ControlDaemon')
