@@ -10,6 +10,7 @@ from lxml import etree
 import msgpack
 
 from turnstile import config
+from turnstile import database
 from turnstile import limits
 from turnstile import remote
 from turnstile import tools
@@ -710,9 +711,8 @@ class TestToolSetupLimits(BaseToolTest):
             self.cmds.append((command, params))
 
         self.stubs.Set(tools, 'parse_limit_node', fake_parse_limit_node)
-        self.stubs.Set(db_fixture.FakeDatabase, 'limit_update',
-                       fake_limit_update)
-        self.stubs.Set(db_fixture.FakeDatabase, 'command', fake_command)
+        self.stubs.Set(database, 'limit_update', fake_limit_update)
+        self.stubs.Set(database, 'command', fake_command)
 
     def test_basic(self):
         limits_file = StringIO.StringIO("""<limits>

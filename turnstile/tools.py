@@ -24,6 +24,7 @@ from lxml import etree
 import msgpack
 
 from turnstile import config
+from turnstile import database
 from turnstile import limits
 from turnstile import remote
 from turnstile import utils
@@ -216,7 +217,7 @@ def _setup_limits(conf_file, limits_file, do_reload=True,
         for lim in lims:
             print >>sys.stderr, "  %r" % lim
     if not dry_run:
-        db.limit_update(limits_key, lims)
+        database.limit_update(db, limits_key, lims)
 
     # Were we requested to reload the limits?
     if do_reload is False:
@@ -240,7 +241,7 @@ def _setup_limits(conf_file, limits_file, do_reload=True,
         print >>sys.stderr, ("Issuing command: %s" %
                              ' '.join(str(c) for c in cmd))
     if not dry_run:
-        db.command(control_channel, 'reload', *params)
+        database.command(db, control_channel, 'reload', *params)
 
 
 def setup_limits():
