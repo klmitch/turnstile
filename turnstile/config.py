@@ -128,21 +128,6 @@ class Config(object):
 
             # Each section corresponds to a top-level in the config
             for sect in cp.sections():
-                # Handle the 'connection' section specially, for
-                # backwards-compatibility
-                if sect == 'connection':
-                    self._config.setdefault('redis', {})
-                    self._config.setdefault('control', {})
-
-                    for key, value in cp.items(sect):
-                        if key == 'limits_key':
-                            self._config['control']['limits_key'] = value
-                        elif key == 'control_channel':
-                            self._config['control']['channel'] = value
-                        else:
-                            self._config['redis'][key] = value
-                    continue
-
                 # Transform [turnstile] section
                 outer = None if sect == 'turnstile' else sect
 
@@ -150,9 +135,6 @@ class Config(object):
 
                 # Merge in the options from the section
                 self._config[outer].update(dict(cp.items(sect)))
-
-    def __str__(self):
-        return str(self._config)
 
     def __getitem__(self, key):
         """
