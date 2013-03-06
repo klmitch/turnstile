@@ -185,6 +185,41 @@ class TestTurnstileMiddleware(unittest2.TestCase):
         self.assertEqual(midware._db, None)
         self.assertEqual(midware.preprocessors, [])
         self.assertEqual(midware.postprocessors, [])
+        self.assertEqual(midware.formatter, midware.format_delay)
+        self.assertFalse(mock_RemoteControlDaemon.called)
+        mock_ControlDaemon.assert_has_calls([
+            mock.call(midware, midware.conf),
+            mock.call().start(),
+        ])
+        mock_info.assert_called_once_with("Turnstile middleware initialized")
+
+    @mock.patch.object(utils, 'find_entrypoint', return_value='fake_formatter')
+    @mock.patch.object(control, 'ControlDaemon')
+    @mock.patch.object(remote, 'RemoteControlDaemon')
+    @mock.patch.object(middleware.LOG, 'info')
+    def test_init_formatter(self, mock_info, mock_RemoteControlDaemon,
+                            mock_ControlDaemon, mock_find_entrypoint):
+        midware = middleware.TurnstileMiddleware('app',
+                                                 dict(formatter='formatter'))
+
+        self.assertEqual(midware.app, 'app')
+        self.assertEqual(midware.limits, [])
+        self.assertEqual(midware.limit_sum, None)
+        self.assertEqual(midware.mapper, None)
+        self.assertIsInstance(midware.mapper_lock,
+                              eventlet.semaphore.Semaphore)
+        self.assertEqual(midware.conf._config, {
+            None: {
+                'status': '413 Request Entity Too Large',
+                'formatter': 'formatter',
+            },
+        })
+        self.assertEqual(midware._db, None)
+        self.assertEqual(midware.preprocessors, [])
+        self.assertEqual(midware.postprocessors, [])
+        mock_find_entrypoint.assert_called_once_with(
+            'turnstile.formatter', 'formatter', required=True)
+        self.assertEqual(midware.formatter, 'fake_formatter')
         self.assertFalse(mock_RemoteControlDaemon.called)
         mock_ControlDaemon.assert_has_calls([
             mock.call(midware, midware.conf),
@@ -215,6 +250,7 @@ class TestTurnstileMiddleware(unittest2.TestCase):
         self.assertEqual(midware._db, None)
         self.assertEqual(midware.preprocessors, [])
         self.assertEqual(midware.postprocessors, [])
+        self.assertEqual(midware.formatter, midware.format_delay)
         self.assertFalse(mock_ControlDaemon.called)
         mock_RemoteControlDaemon.assert_has_calls([
             mock.call(midware, midware.conf),
@@ -271,6 +307,7 @@ class TestTurnstileMiddleware(unittest2.TestCase):
             'postproc4',
             'postproc2',
         ])
+        self.assertEqual(midware.formatter, midware.format_delay)
         self.assertFalse(mock_RemoteControlDaemon.called)
         mock_ControlDaemon.assert_has_calls([
             mock.call(midware, midware.conf),
@@ -333,6 +370,7 @@ class TestTurnstileMiddleware(unittest2.TestCase):
             'postproc4',
             'postproc2',
         ])
+        self.assertEqual(midware.formatter, midware.format_delay)
         self.assertFalse(mock_RemoteControlDaemon.called)
         mock_ControlDaemon.assert_has_calls([
             mock.call(midware, midware.conf),

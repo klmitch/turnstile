@@ -210,6 +210,14 @@ class TurnstileMiddleware(object):
                                               postproc, required=True)
                 self.postprocessors.append(klass)
 
+        # Set up the alternative formatter
+        formatter = self.conf.get('formatter')
+        if formatter:
+            self.formatter = utils.find_entrypoint('turnstile.formatter',
+                                                   formatter, required=True)
+        else:
+            self.formatter = self.format_delay
+
         # Initialize the control daemon
         if self.conf.to_bool(self.conf['control'].get('remote', 'no'), False):
             self.control_daemon = remote.RemoteControlDaemon(self, self.conf)
@@ -308,8 +316,8 @@ class TurnstileMiddleware(object):
             delay, limit, bucket = sorted(environ['turnstile.delay'],
                                           key=lambda x: x[0])[-1]
 
-            return self.format_delay(delay, limit, bucket,
-                                     environ, start_response)
+            return self.formatter(delay, limit, bucket,
+                                  environ, start_response)
 
         with self.mapper_lock:
             # Run the request postprocessors; some may want to refer
