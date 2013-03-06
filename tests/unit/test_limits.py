@@ -212,7 +212,8 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.updates, 0)
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, False)
-        self.assertEqual(loader.last_summarize, None)
+        self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_ts, None)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
     def test_read_one_bucket_record(self, mock_loads):
@@ -231,7 +232,8 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.updates, 0)
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, False)
-        self.assertEqual(loader.last_summarize, None)
+        self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_ts, None)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
     def test_read_one_update_record(self, mock_loads):
@@ -251,7 +253,8 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.updates, 1)
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, False)
-        self.assertEqual(loader.last_summarize, None)
+        self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_ts, None)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
     def test_read_multi_update_record(self, mock_loads):
@@ -281,7 +284,8 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.updates, 3)
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, False)
-        self.assertEqual(loader.last_summarize, None)
+        self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_ts, None)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
     def test_read_multi_update_record_traverse_summarize(self, mock_loads):
@@ -290,7 +294,7 @@ class TestBucketLoader(unittest2.TestCase):
         records = [
             dict(update=dict(params='params0', time='time0')),
             dict(update=dict(params='params1', time='time1')),
-            dict(summarize=True),
+            dict(summarize=1000000.0),
             dict(update=dict(params='params2', time='time2'), uuid='stop'),
             dict(bucket='a bucket'),
             dict(update=dict(params='params3', time='time3')),
@@ -312,7 +316,8 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.updates, 3)
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, True)
-        self.assertEqual(loader.last_summarize, None)
+        self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_ts, 1000000.0)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
     def test_read_multi_update_record_no_traverse_summarize(self, mock_loads):
@@ -323,8 +328,9 @@ class TestBucketLoader(unittest2.TestCase):
             dict(update=dict(params='params1', time='time1')),
             dict(update=dict(params='params2', time='time2'), uuid='stop'),
             dict(bucket='a bucket'),
-            dict(summarize=True),
+            dict(summarize=1000000.0),
             dict(update=dict(params='params3', time='time3')),
+            dict(summarize=1000010.0),
         ]
 
         loader = limits.BucketLoader(bucket_class, 'db', 'limit', 'key',
@@ -343,7 +349,8 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.updates, 3)
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, True)
-        self.assertEqual(loader.last_summarize, None)
+        self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_ts, 1000010.0)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
     def test_read_multi_summarize(self, mock_loads):
@@ -351,11 +358,11 @@ class TestBucketLoader(unittest2.TestCase):
         bucket_class = mock.Mock(return_value=bucket)
         records = [
             dict(update=dict(params='params0', time='time0')),
-            dict(summarize=True),
+            dict(summarize=1000000.0),
             dict(update=dict(params='params1', time='time1')),
-            dict(summarize=True),
+            dict(summarize=1000010.0),
             dict(update=dict(params='params2', time='time2')),
-            dict(summarize=True),
+            dict(summarize=999990.0),
             dict(update=dict(params='params3', time='time3')),
         ]
 
@@ -375,22 +382,35 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.updates, 3)
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, True)
-        self.assertEqual(loader.last_summarize, 5)
+        self.assertEqual(loader.last_summarize_idx, 5)
+        self.assertEqual(loader.last_summarize_ts, 1000010.0)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
     def test_need_summary(self, mock_loads):
         loader = limits.BucketLoader(mock.Mock(), 'db', 'limit', 'key', [])
         loader.updates = 5
 
-        self.assertFalse(loader.need_summary(10))
-        self.assertTrue(loader.need_summary(5))
-        self.assertTrue(loader.need_summary(4))
+        self.assertFalse(loader.need_summary(1000000.0, 10, 600))
+        self.assertTrue(loader.need_summary(1000000.0, 5, 600))
+        self.assertTrue(loader.need_summary(1000000.0, 4, 600))
+
+        loader.last_summarize_ts = 1000000.0
+
+        self.assertFalse(loader.need_summary(1000000.0, 10, 600))
+        self.assertTrue(loader.need_summary(1000000.0, 5, 600))
+        self.assertTrue(loader.need_summary(1000000.0, 4, 600))
 
         loader.summarized = True
 
-        self.assertFalse(loader.need_summary(10))
-        self.assertFalse(loader.need_summary(5))
-        self.assertFalse(loader.need_summary(4))
+        self.assertFalse(loader.need_summary(1000000.0, 10, 600))
+        self.assertFalse(loader.need_summary(1000000.0, 5, 600))
+        self.assertFalse(loader.need_summary(1000000.0, 4, 600))
+
+        loader.last_summarize_ts = 999400.0
+
+        self.assertTrue(loader.need_summary(1000000.0, 10, 600))
+        self.assertTrue(loader.need_summary(1000000.0, 5, 600))
+        self.assertTrue(loader.need_summary(1000000.0, 4, 600))
 
 
 class TestBucket(unittest2.TestCase):
@@ -1470,9 +1490,116 @@ class TestLimit(unittest2.TestCase):
         self.assertEqual(len(db.method_calls), 4)
         mock_BucketLoader.assert_called_once_with(
             limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
-        mock_BucketLoader.return_value.need_summary.assert_called_once_with(10)
+        mock_BucketLoader.return_value.need_summary.assert_called_once_with(
+            1000000.0, 10, 600)
         self.assertEqual(environ, {
             'turnstile.conf': dict(compactor=dict(max_updates='10')),
+        })
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_compactor_unneeded_altage(self, mock_key, mock_filter,
+                                              mock_BucketLoader, mock_time,
+                                              mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(**{
+            'delay': None,
+            'bucket': mock.Mock(expire=1000010),
+            'need_summary.return_value': False,
+        })
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {'turnstile.conf': {
+            'compactor': dict(max_updates='10', max_age='300'),
+        }}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with(environ, dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        mock_BucketLoader.return_value.need_summary.assert_called_once_with(
+            1000000.0, 10, 300)
+        self.assertEqual(environ, {
+            'turnstile.conf': {
+                'compactor': dict(max_updates='10', max_age='300'),
+            },
+        })
+
+    @mock.patch('msgpack.dumps', side_effect=lambda x: x)
+    @mock.patch('time.time', return_value=1000000.0)
+    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch.object(limits, 'BucketLoader')
+    @mock.patch.object(limits.Limit, 'filter', return_value=None)
+    @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
+    def test_filter_compactor_unneeded_badage(self, mock_key, mock_filter,
+                                              mock_BucketLoader, mock_time,
+                                              mock_uuid4, mock_dumps):
+        mock_BucketLoader.return_value = mock.Mock(**{
+            'delay': None,
+            'bucket': mock.Mock(expire=1000010),
+            'need_summary.return_value': False,
+        })
+        db = mock.Mock(**{
+            'lrange.return_value': ['record1', 'record2'],
+        })
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        environ = {'turnstile.conf': {
+            'compactor': dict(max_updates='10', max_age='300.0'),
+        }}
+        params = dict(param='test')
+        result = limit._filter(environ, params)
+
+        self.assertEqual(result, False)
+        mock_filter.assert_called_once_with(environ, dict(param='test'), {})
+        mock_key.assert_called_once_with(dict(param='test'))
+
+        update_record = {
+            'uuid': 'update_uuid',
+            'update': {
+                'params': dict(param='test'),
+                'time': 1000000.0,
+            },
+        }
+
+        db.assert_has_calls([
+            mock.call.expire('bucket_key', 60),
+            mock.call.rpush('bucket_key', update_record),
+            mock.call.lrange('bucket_key', 0, -1),
+            mock.call.expireat('bucket_key', 1000010),
+        ])
+        self.assertEqual(len(db.method_calls), 4)
+        mock_BucketLoader.assert_called_once_with(
+            limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
+        mock_BucketLoader.return_value.need_summary.assert_called_once_with(
+            1000000.0, 10, 600)
+        self.assertEqual(environ, {
+            'turnstile.conf': {
+                'compactor': dict(max_updates='10', max_age='300.0'),
+            },
         })
 
     @mock.patch('msgpack.dumps', side_effect=lambda x: x)
@@ -1508,18 +1635,23 @@ class TestLimit(unittest2.TestCase):
                 'time': 1000000.1,
             },
         }
+        summarize_record = {
+            'summarize': 1000000.1,
+        }
 
         db.assert_has_calls([
             mock.call.expire('bucket_key', 60),
             mock.call.rpush('bucket_key', update_record),
             mock.call.lrange('bucket_key', 0, -1),
-            mock.call.expireat('bucket_key', 1000010),
+            mock.call.rpush('bucket_key', summarize_record),
             mock.call.zadd('compactor', 1000001, 'bucket_key'),
+            mock.call.expireat('bucket_key', 1000010),
         ])
-        self.assertEqual(len(db.method_calls), 5)
+        self.assertEqual(len(db.method_calls), 6)
         mock_BucketLoader.assert_called_once_with(
             limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
-        mock_BucketLoader.return_value.need_summary.assert_called_once_with(10)
+        mock_BucketLoader.return_value.need_summary.assert_called_once_with(
+            1000000.1, 10, 600)
         self.assertEqual(environ, {
             'turnstile.conf': dict(compactor=dict(max_updates='10')),
         })
@@ -1561,18 +1693,23 @@ class TestLimit(unittest2.TestCase):
                 'time': 1000000.1,
             },
         }
+        summarize_record = {
+            'summarize': 1000000.1,
+        }
 
         db.assert_has_calls([
             mock.call.expire('bucket_key', 60),
             mock.call.rpush('bucket_key', update_record),
             mock.call.lrange('bucket_key', 0, -1),
-            mock.call.expireat('bucket_key', 1000010),
+            mock.call.rpush('bucket_key', summarize_record),
             mock.call.zadd('alt_key', 1000001, 'bucket_key'),
+            mock.call.expireat('bucket_key', 1000010),
         ])
-        self.assertEqual(len(db.method_calls), 5)
+        self.assertEqual(len(db.method_calls), 6)
         mock_BucketLoader.assert_called_once_with(
             limits.Bucket, db, limit, 'bucket_key', ['record1', 'record2'])
-        mock_BucketLoader.return_value.need_summary.assert_called_once_with(10)
+        mock_BucketLoader.return_value.need_summary.assert_called_once_with(
+            1000000.1, 10, 600)
         self.assertEqual(environ, {
             'turnstile.conf': {
                 'compactor': dict(max_updates='10', compactor_key='alt_key'),

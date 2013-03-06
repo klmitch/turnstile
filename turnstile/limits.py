@@ -269,7 +269,7 @@ class BucketLoader(object):
         "summarize" request quiesces for a given period of time before
         it is processed.)
 
-      last_summarize
+      last_summarize_idx
         If not None, this is the integer, 0-based index of the last
         "summarize" record in the bucket representation.  The
         compacting algorithm assembles a final bucket up to this last
@@ -278,6 +278,12 @@ class BucketLoader(object):
         "summarize" record, to finish compacting the entry.  The index
         of the last "summarize" record is used to ensure the insert
         and the trim cover the appropriate records.
+
+      last_summarize_ts
+        If not None, this is the timestamp on the last "summarize"
+        record in the bucket representation.  This is used to ensure
+        that the bucket will be eventually summarized, even if a
+        summarize request was lost by the compactor.
     """
 
     def __init__(self, bucket_class, db, limit, key, records,
@@ -305,7 +311,8 @@ class BucketLoader(object):
         self.updates = 0
         self.delay = None
         self.summarized = False
-        self.last_summarize = None
+        self.last_summarize_idx = None
+        self.last_summarize_ts = None
 
         # Unpack the records
         records = [msgpack.loads(rec) for rec in records]
@@ -314,18 +321,20 @@ class BucketLoader(object):
         # record
         if stop_summarize:
             for i, rec in enumerate(reversed(records)):
-                # If it's a summarize record, store the index of the
-                # record within the list
+                # If it's a summarize record, store the index and
+                # timestamp of the record within the list
                 if 'summarize' in rec:
                     self.summarized = True
-                    self.last_summarize = len(records) - i - 1
+                    self.last_summarize_ts = rec['summarize']
+                    self.last_summarize_idx = len(records) - i - 1
                     break
 
         # Now, build the bucket
         no_update = False
         for i, rec in enumerate(records):
             # Break out if we hit the last summary record
-            if self.last_summarize is not None and i == self.last_summarize:
+            if (self.last_summarize_idx is not None and
+                    i == self.last_summarize_idx):
                 break
 
             # Update the bucket as appropriate
@@ -360,25 +369,18 @@ class BucketLoader(object):
                 # We have a summarize record; remember that one exists
                 self.summarized = True
 
-                if no_update:
-                    # We have now determined that there are
-                    # 'summarize' records; if we've also already
-                    # processed all the records we're interested in,
-                    # bail out
-                    break
+                # Look for the oldest summarize record and remember
+                # its timestamp
+                ts = rec['summarize']
+                if (self.last_summarize_ts is None or
+                        ts > self.last_summarize_ts):
+                    self.last_summarize_ts = ts
 
             # If we hit the last record we're supposed to process,
             # stop
             if stop_uuid is not None and rec.get('uuid') == stop_uuid:
-                if self.summarized:
-                    # We have now processed all the records we're
-                    # interested in; if we've seen a 'summarize'
-                    # record, then we've answered that question as
-                    # well, and we're done.
-                    break
-
-                # There may be a 'summarize' record still to be found,
-                # so just suspend updates to the bucket but search the
+                # There may be 'summarize' records still to find, so
+                # just suspend updates to the bucket but search the
                 # rest of the record list
                 no_update = True
 
@@ -386,17 +388,25 @@ class BucketLoader(object):
         if self.bucket is None:
             self.bucket = bucket_class(db, limit, key)
 
-    def need_summary(self, max_updates):
+    def need_summary(self, now, max_updates, max_age):
         """
         Helper method to determine if a "summarize" record should be
         added.
 
+        :param now: The current time.
         :param max_updates: Maximum number of updates before a
                             summarize is required.
+        :param max_age: Maximum age of the last summarize record.
+                        This is used in the case where a summarize
+                        request has been lost by the compactor.
 
         :returns: True if a "summarize" record should be added, False
                   otherwise.
         """
+
+        # Handle the case where an old summarize record exists
+        if self.summarized is True and self.last_summarize_ts + max_age <= now:
+            return True
 
         return self.summarized is False and self.updates >= max_updates
 
@@ -895,6 +905,37 @@ class Limit(object):
         records = self.db.lrange(key, 0, -1)
         loader = BucketLoader(self.bucket_class, self.db, self, key, records)
 
+        # Determine if we should initialize the compactor algorithm on
+        # this bucket
+        if 'turnstile.conf' in environ:
+            config = environ['turnstile.conf']['compactor']
+            try:
+                max_updates = int(config['max_updates'])
+            except (KeyError, ValueError):
+                max_updates = None
+            try:
+                max_age = int(config['max_age'])
+            except (KeyError, ValueError):
+                max_age = 600
+            if max_updates and loader.need_summary(now, max_updates, max_age):
+                # Add a summary record; we want to do this before
+                # instructing the compactor to compact.  If we did the
+                # compactor instruction first, and a crash occurred
+                # before adding the summarize record, the lack of
+                # quiesence could cause two compactor threads to run
+                # on the same bucket, leading to a race condition that
+                # could corrupt the bucket.  With this ordering, if a
+                # crash occurs before the compactor instruction, the
+                # maximum aging applied to summarize records will
+                # cause this logic to eventually be retriggered, which
+                # should allow the compactor instruction to be issued.
+                summarize = dict(summarize=now)
+                self.db.rpush(key, msgpack.dumps(summarize))
+
+                # Instruct the compactor to compact this record
+                compactor_key = config.get('compactor_key', 'compactor')
+                self.db.zadd(compactor_key, int(math.ceil(now)), key)
+
         # Set the expire on the bucket
         self.db.expireat(key, loader.bucket.expire)
 
@@ -905,18 +946,6 @@ class Limit(object):
             environ.setdefault('turnstile.delay', [])
             environ['turnstile.delay'].append((loader.delay, self,
                                                loader.bucket))
-
-        # Determine if we should initialize the compactor algorithm on
-        # this bucket
-        if 'turnstile.conf' in environ:
-            config = environ['turnstile.conf']['compactor']
-            try:
-                max_updates = int(config['max_updates'])
-            except (KeyError, ValueError):
-                max_updates = None
-            if max_updates and loader.need_summary(max_updates):
-                compactor_key = config.get('compactor_key', 'compactor')
-                self.db.zadd(compactor_key, int(math.ceil(now)), key)
 
         # Finally, if desired, add the bucket key to a desired
         # database set
