@@ -196,7 +196,7 @@ class ControlDaemon(object):
                     continue
 
                 # Execute the desired command
-                arglist = args.split(':')
+                arglist = args.split(':') if args else []
                 try:
                     func(self, *arglist)
                 except Exception:
