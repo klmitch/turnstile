@@ -166,7 +166,6 @@ class Connection(object):
 
             # We have no complete messages; loop around and try to
             # read more data
-            continue
 
 
 def remote(func):
