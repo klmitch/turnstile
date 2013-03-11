@@ -24,9 +24,7 @@ from turnstile import middleware
 from turnstile import remote
 from turnstile import utils
 
-
-class TestException(Exception):
-    pass
+from tests.unit import utils as test_utils
 
 
 class TestHeadersDict(unittest2.TestCase):
@@ -470,7 +468,7 @@ class TestTurnstileMiddleware(unittest2.TestCase):
                                       mock_exception, mock_info,
                                       mock_ControlDaemon, mock_format_exc):
         limit_data = mock.Mock(**{
-            'get_limits.side_effect': TestException,
+            'get_limits.side_effect': test_utils.TestException,
         })
         mock_ControlDaemon.return_value = mock.Mock(**{
             'get_limits.return_value': limit_data,
@@ -514,7 +512,7 @@ class TestTurnstileMiddleware(unittest2.TestCase):
                                               mock_ControlDaemon,
                                               mock_format_exc):
         limit_data = mock.Mock(**{
-            'get_limits.side_effect': TestException,
+            'get_limits.side_effect': test_utils.TestException,
         })
         mock_ControlDaemon.return_value = mock.Mock(**{
             'get_limits.return_value': limit_data,

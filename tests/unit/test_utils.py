@@ -19,9 +19,7 @@ import unittest2
 
 from turnstile import utils
 
-
-class TestException(Exception):
-    pass
+from tests.unit import utils as test_utils
 
 
 class TestFindEntryPoint(unittest2.TestCase):
@@ -152,7 +150,7 @@ class TestIgnoreExcept(unittest2.TestCase):
         step = 0
         with utils.ignore_except():
             step += 1
-            raise TestException()
+            raise test_utils.TestException()
             step += 2
 
         self.assertEqual(step, 1)

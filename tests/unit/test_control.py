@@ -20,9 +20,7 @@ import unittest2
 from turnstile import config
 from turnstile import control
 
-
-class TestException(Exception):
-    pass
+from tests.unit import utils as test_utils
 
 
 class TestLimitData(unittest2.TestCase):
@@ -159,7 +157,7 @@ class TestControlDaemon(unittest2.TestCase):
 
     @mock.patch.dict(control.ControlDaemon._commands, clear=True,
                      ping=mock.Mock(), _ping=mock.Mock(),
-                     fail=mock.Mock(side_effect=TestException))
+                     fail=mock.Mock(side_effect=test_utils.TestException))
     @mock.patch.object(config.Config, 'get_database')
     @mock.patch.object(control.LOG, 'error')
     @mock.patch.object(control.LOG, 'exception')
@@ -293,7 +291,7 @@ class TestControlDaemon(unittest2.TestCase):
 
     @mock.patch.dict(control.ControlDaemon._commands, clear=True,
                      ping=mock.Mock(), _ping=mock.Mock(),
-                     fail=mock.Mock(side_effect=TestException))
+                     fail=mock.Mock(side_effect=test_utils.TestException))
     @mock.patch.object(config.Config, 'get_database')
     @mock.patch.object(control.LOG, 'error')
     @mock.patch.object(control.LOG, 'exception')
@@ -505,7 +503,9 @@ class TestControlDaemon(unittest2.TestCase):
     def test_reload_exception(self, mock_format_exc, mock_exception):
         cd = control.ControlDaemon('middleware', config.Config())
         cd.pending = mock.Mock(**{'acquire.return_value': True})
-        cd.limits = mock.Mock(**{'set_limits.side_effect': TestException})
+        cd.limits = mock.Mock(**{
+            'set_limits.side_effect': test_utils.TestException,
+        })
         cd._db = mock.Mock(**{'zrange.return_value': ['limit1', 'limit2']})
 
         cd.reload()
@@ -533,7 +533,9 @@ class TestControlDaemon(unittest2.TestCase):
             'control.errors_channel': 'alt_chan',
         }))
         cd.pending = mock.Mock(**{'acquire.return_value': True})
-        cd.limits = mock.Mock(**{'set_limits.side_effect': TestException})
+        cd.limits = mock.Mock(**{
+            'set_limits.side_effect': test_utils.TestException,
+        })
         cd._db = mock.Mock(**{'zrange.return_value': ['limit1', 'limit2']})
 
         cd.reload()
