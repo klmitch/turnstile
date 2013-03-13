@@ -498,7 +498,6 @@ class SimpleRPC(object):
             # Log other exceptions
             LOG.exception("Error serving client at %s port %s: %s" %
                           (addr[0], addr[1], str(exc)))
-            pass
 
         finally:
             LOG.info("Closing connection from %s port %s" %
