@@ -254,6 +254,7 @@ class SimpleRPC(object):
     """
 
     connection_class = Connection
+    max_err_thresh = 10
 
     def __init__(self, host, port, authkey):
         """
@@ -380,7 +381,7 @@ class SimpleRPC(object):
                 sock, addr = serv.accept()
             except Exception as exc:
                 err_thresh += 1
-                if err_thresh > 10:
+                if err_thresh >= self.max_err_thresh:
                     LOG.exception("Too many errors accepting "
                                   "connections: %s" % str(exc))
                     break
