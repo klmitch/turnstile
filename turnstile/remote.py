@@ -385,7 +385,7 @@ class SimpleRPC(object):
                     LOG.exception("Too many errors accepting "
                                   "connections: %s" % str(exc))
                     break
-                continue
+                continue  # Pragma: nocover
 
             # Decrement error count on successful connections
             err_thresh = max(err_thresh - 1, 0)
@@ -401,17 +401,34 @@ class SimpleRPC(object):
         with utils.ignore_except():
             serv.close()
 
-    def serve(self, conn, addr):
+    def _get_remote_method(self, funcname):
+        """
+        Look up the named remote method.  Broken out from serve() for
+        testing purposes.
+
+        :param funcname: The name of the function to look up.
+        """
+
+        func = getattr(self, funcname)
+        if not callable(func) or not getattr(func, '_remote', False):
+            raise AttributeError("%r object has no attribute %r" %
+                                 (self.__class__.__name__, funcname))
+
+        return func
+
+    def serve(self, conn, addr, auth=False):
         """
         Handle a single client.
 
         :param conn: The Connection instance.
         :param addr: The address of the client, for logging purposes.
+        :param auth: A boolean specifying whether the connection
+                     should be considered authenticated or not.
+                     Provided for debugging.
         """
 
         try:
             # Handle data from the client
-            auth = False
             while True:
                 # Get the command
                 try:
@@ -424,7 +441,7 @@ class SimpleRPC(object):
                     # disconnect them
                     if not auth:
                         return
-                    continue
+                    continue  # Pragma: nocover
 
                 # Log the command and payload, for debugging purposes
                 LOG.debug("Received command %r from %s port %s; payload: %r" %
@@ -442,10 +459,6 @@ class SimpleRPC(object):
                         # Authentication successful
                         conn.send('OK')
                         auth = True
-
-                # Special QUIT command for testing purposes
-                elif cmd == 'QUIT':
-                    return
 
                 # Handle unauthenticated connections
                 elif not auth:
@@ -469,13 +482,7 @@ class SimpleRPC(object):
                             continue
 
                         # Look up the function
-                        func = getattr(self, funcname, None)
-                        if (not func or
-                                not callable(func) or
-                                not getattr(func, '_remote', False)):
-                            raise AttributeError(
-                                "%r object has no attribute %r" %
-                                (self.__class__.__name__, funcname))
+                        func = self._get_remote_method(funcname)
 
                         # Call the function
                         result = func(*args, **kwargs)
@@ -652,7 +659,7 @@ class RemoteControlDaemon(control.ControlDaemon):
         """
 
         # Don't connect the client yet, to avoid problems if we fork
-        pass
+        pass  # Pragma: nocover
 
     def serve(self):
         """

@@ -16,3 +16,7 @@
 
 class TestException(Exception):
     pass
+
+
+class Halt(BaseException):
+    pass
