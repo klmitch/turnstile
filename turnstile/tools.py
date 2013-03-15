@@ -13,9 +13,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import functools
+import inspect
 import logging
 import logging.config
 import sys
+import textwrap
 import warnings
 
 import argparse
@@ -30,28 +33,241 @@ from turnstile import remote
 from turnstile import utils
 
 
-def parse_config(conf_file):
+class ScriptAdaptor(object):
     """
-    Provide backwards-compatibility.
-
-    Previous versions of Turnstile had parse_config(), which would
-    parse a Turnstile configuration file and return a database handle,
-    the limits key, and the control channel, as a tuple.  As it turns
-    out, some external tools referenced this parse_config() function.
-    This function, unused by Turnstile itself, provides backwards
-    compatibility for this functionality, using the new config.Config
-    class.
+    Special wrapper for a console script entrypoint.  This allows
+    command line arguments to be specified using decorators.  The
+    underlying function may be called directly, if that is desired.  A
+    short description of the function, derived from the function
+    docstring, is available in the 'description' attribute.
     """
 
-    # Read the configuration file
-    conf = config.Config(conf_file=conf_file)
+    @classmethod
+    def _wrap(cls, func):
+        """
+        Ensures that the function is wrapped in a ScriptAdaptor
+        object.  If it is not, a new ScriptAdaptor will be returned.
+        If it is, the ScriptAdaptor is returned.
 
-    # Get a database handle and the limits key and control channel
-    db = conf.get_database()
-    limits_key = conf['control'].get('limits_key', 'limits')
-    control_channel = conf['control'].get('channel', 'control')
+        :param func: The function to be wrapped.
+        """
 
-    return db, limits_key, control_channel
+        if isinstance(func, cls):
+            return func
+        return functools.update_wrapper(cls(func), func)
+
+    def __init__(self, func):
+        """
+        Initialize a ScriptAdaptor.
+
+        :param func: The underlying function.
+        """
+
+        self._func = func
+        self._preprocess = []
+        self._arguments = []
+
+        # Extract the description of the script
+        desc = []
+        for line in textwrap.dedent(func.__doc__ or '').strip().split('\n'):
+            # Clean up the line...
+            line = line.strip()
+
+            # We only want the first paragraph
+            if not line:
+                break
+
+            desc.append(line)
+
+        # Save the description
+        self.description = ' '.join(desc)
+
+    def __call__(self, *args, **kwargs):
+        """
+        Call the function directly.  All arguments are passed to the
+        function, and the function's return value is returned.
+        """
+
+        return self._func(*args, **kwargs)
+
+    def _add_argument(self, args, kwargs):
+        """
+        Add an argument specification.
+
+        :param args: Positional arguments for the underlying
+                     ArgumentParser.add_argument() method.
+        :param kwargs: Keyword arguments for the underlying
+                       ArgumentParser.add_argument() method.
+        """
+
+        self._arguments.insert(0, (args, kwargs))
+
+    def _add_preprocessor(self, func):
+        """
+        Add a preprocessor.  Preprocessors run after parsing the
+        arguments and before the underlying function is executed, and
+        may be used to set up such things as logging.
+
+        :param func: The function to be added as a preprocessor.
+        :param insert: Boolean indicating whether to add the function
+                       to the beginning of the list of preprocessors
+                       or to the end.  This is used to allow the
+                       @preprocessor() decorators to be specified in
+                       natural order.
+
+        :returns: The function.  This allows this method to be used as
+                  a decorator.
+        """
+
+        self._preprocess.insert(0, func)
+
+    def setup_args(self, parser):
+        """
+        Set up an argparse.ArgumentParser object by adding all the
+        arguments taken by the function.
+        """
+
+        # Add all the arguments to the argument parser
+        for args, kwargs in self._arguments:
+            parser.add_argument(*args, **kwargs)
+
+    def get_kwargs(self, args):
+        """
+        Given a Namespace object drawn from argparse, determines the
+        keyword arguments to pass to the underlying function.  Note
+        that, if the underlying function accepts all keyword
+        arguments, the dictionary returned will contain the entire
+        contents of the Namespace object.  Also note that an
+        AttributeError will be raised if any argument required by the
+        function is not set in the Namespace object.
+
+        :param args: A Namespace object from argparse.
+        """
+
+        # Now we need to figure out which arguments the final function
+        # actually needs
+        kwargs = {}
+        argspec = inspect.getargspec(self._func)
+        required = set(argspec.args[:-len(argspec.defaults)]
+                       if argspec.defaults else argspec.args)
+        for arg_name in argspec.args:
+            try:
+                kwargs[arg_name] = getattr(args, arg_name)
+            except AttributeError:
+                if arg_name in required:
+                    # If this happens, that's a programming failure
+                    raise
+
+        # If the function accepts any keyword argument, add whatever
+        # remains
+        if argspec.keywords:
+            for key, value in args.__dict__.items():
+                if key in kwargs:
+                    # Already handled
+                    continue
+                kwargs[key] = value
+
+        return kwargs
+
+    def safe_call(self, kwargs, args=None):
+        """
+        Call the underlying function safely, given a set of keyword
+        arguments.  If successful, the function return value (likely
+        None) will be returned.  If the underlying function raises an
+        exception, the return value will be the exception message,
+        unless an argparse Namespace object defining a 'debug'
+        attribute of True is provided; in this case, the exception
+        will be re-raised.
+
+        :param kwargs: A dictionary of keyword arguments to pass to
+                       the underlying function.
+        :param args: If provided, this should be a Namespace object
+                     with a 'debug' attribute set to a boolean value.
+
+        :returns: The function return value, or the string value of
+                  the exception raised by the function.
+        """
+
+        # Now let's call the function
+        try:
+            return self._func(**kwargs)
+        except Exception as exc:
+            if args and getattr(args, 'debug', False):
+                raise
+            return str(exc)
+
+    def console(self):
+        """
+        Call the function as a console script.  Command line arguments
+        are parsed, preprocessors are called, then the function is
+        called.  If a 'debug' attribute is set by the command line
+        arguments, and it is True, any exception raised by the
+        underlying function will be reraised; otherwise, the return
+        value will be either the return value of the function or the
+        text contents of the exception.
+        """
+
+        # First, let's parse the arguments
+        parser = argparse.ArgumentParser(description=self.description)
+        self.setup_args(parser)
+        args = parser.parse_args()
+
+        # Next, let's run the preprocessors in order
+        for proc in self._preprocess:
+            proc(args)
+
+        # Finally, safely call the underlying function
+        return self.safe_call(self.get_kwargs(args), args)
+
+
+def add_argument(*args, **kwargs):
+    """
+    Define an argument for the function when running in console script
+    mode.  The positional and keyword arguments are the same as for
+    ArgumentParser.add_argument().
+    """
+
+    def decorator(func):
+        func = ScriptAdaptor._wrap(func)
+        func._add_argument(args, kwargs)
+        return func
+    return decorator
+
+
+def add_preprocessor(preproc):
+    """
+    Define a preprocessor to run after the arguments are parsed and
+    before the function is executed, when running in console script
+    mode.
+
+    :param preproc: The callable, which will be passed the Namespace
+                    object generated by argparse.
+    """
+
+    def decorator(func):
+        func = ScriptAdaptor._wrap(func)
+        func._add_preprocessor(preproc)
+        return func
+    return decorator
+
+
+def _setup_logging(args):
+    """
+    Set up logging for the script, based on the configuration
+    specified by the 'logging' attribute of the command line
+    arguments.
+
+    :param args: A Namespace object containing a 'logging' attribute
+                 specifying the name of a logging configuration file
+                 to use.  If not present or not given, a basic logging
+                 configuration will be set.
+    """
+
+    log_conf = getattr(args, 'logging', None)
+    if log_conf:
+        logging.config.fileConfig(log_conf)
+    else:
+        logging.basicConfig()
 
 
 def parse_limit_node(db, idx, limit):
@@ -103,15 +319,22 @@ def parse_limit_node(db, idx, limit):
             # child element names
             subtype = desc.get('subtype', str)
             value = []
-            for grandchild in child:
-                if grandchild.tag != 'value':
-                    warnings.warn("Unrecognized element %r while parsing "
-                                  "%r attribute of limit at index %d; "
-                                  "ignoring..." %
-                                  (grandchild.tag, attr, idx))
-                    continue
+            try:
+                for j, grandchild in enumerate(child):
+                    if grandchild.tag != 'value':
+                        warnings.warn("Unrecognized element %r while parsing "
+                                      "%r attribute of limit at index %d; "
+                                      "ignoring element..." %
+                                      (grandchild.tag, attr, idx))
+                        continue
 
-                value.append(subtype(grandchild.text))
+                    value.append(subtype(grandchild.text))
+            except ValueError:
+                warnings.warn("Invalid value %r while parsing element %d "
+                              "of %r attribute of limit at index %d; "
+                              "ignoring attribute..." %
+                              (grandchild.text, j, attr, idx))
+                continue
         elif attr_type == dict:
             # Dicts are expressed as child elements, with the tags
             # identifying the attribute name
@@ -121,17 +344,25 @@ def parse_limit_node(db, idx, limit):
                 if grandchild.tag != 'value':
                     warnings.warn("Unrecognized element %r while parsing "
                                   "%r attribute of limit at index %d; "
-                                  "ignoring..." %
+                                  "ignoring element..." %
                                   (grandchild.tag, attr, idx))
                     continue
                 elif 'key' not in grandchild.attrib:
                     warnings.warn("Missing 'key' attribute of 'value' "
                                   "element while parsing %r attribute of "
-                                  "limit at index %d; ignoring..." %
+                                  "limit at index %d; ignoring element..." %
                                   (attr, idx))
                     continue
 
-                value[grandchild.get('key')] = subtype(grandchild.text)
+                try:
+                    value[grandchild.get('key')] = subtype(grandchild.text)
+                except ValueError:
+                    warnings.warn("Invalid value %r while parsing %r element "
+                                  "of %r attribute of limit at index %d; "
+                                  "ignoring element..." %
+                                  (grandchild.text, grandchild.get('key'),
+                                   attr, idx))
+                    continue
         elif attr_type == bool:
             try:
                 value = config.Config.to_bool(child.text)
@@ -142,7 +373,13 @@ def parse_limit_node(db, idx, limit):
                 continue
         else:
             # Simple type conversion
-            value = attr_type(child.text)
+            try:
+                value = attr_type(child.text)
+            except ValueError:
+                warnings.warn("Invalid value %r while parsing %r attribute "
+                              "of limit at index %d; ignoring..." %
+                              (child.text, attr, idx))
+                continue
 
         # Save the attribute
         attrs[attr] = value
@@ -159,8 +396,44 @@ def parse_limit_node(db, idx, limit):
     return klass(db, **attrs)
 
 
-def _setup_limits(conf_file, limits_file, do_reload=True,
-                  dry_run=False, debug=False):
+@add_argument('config',
+              dest='conf_file',
+              help="Name of the configuration file, for connecting "
+              "to the Redis database.")
+@add_argument('limits_file',
+              help="Name of the XML file describing the limits to "
+              "configure.")
+@add_argument('--debug', '-d',
+              dest='debug',
+              action='store_true',
+              default=False,
+              help="Run the tool in debug mode.")
+@add_argument('--dryrun', '--dry_run', '--dry-run', '-n',
+              dest='dry_run',
+              action='store_true',
+              default=False,
+              help="Perform a dry run; inhibits loading data into "
+              "the database.")
+@add_argument('--noreload', '-R',
+              dest='do_reload',
+              action='store_false',
+              default=True,
+              help="Inhibit issuing a reload command.")
+@add_argument('--reload-immediate', '-r',
+              dest='do_reload',
+              action='store_const',
+              const='immediate',
+              help="Cause all nodes to immediately reload the "
+              "limits configuration.")
+@add_argument('--reload-spread', '-s',
+              dest='do_reload',
+              metavar='SECS',
+              type=float,
+              action='store',
+              help="Cause all nodes to reload the limits "
+              "configuration over the specified number of seconds.")
+def setup_limits(conf_file, limits_file, do_reload=True,
+                 dry_run=False, debug=False):
     """
     Set up or update limits in the Redis database.
 
@@ -244,59 +517,8 @@ def _setup_limits(conf_file, limits_file, do_reload=True,
         database.command(db, control_channel, 'reload', *params)
 
 
-def setup_limits():
-    """
-    Console script entry point for setting up limits from an XML file.
-    """
-
-    parser = argparse.ArgumentParser(
-        description="Set up or update limits in the Redis database.",
-    )
-
-    parser.add_argument('config',
-                        help="Name of the configuration file, for connecting "
-                        "to the Redis database.")
-    parser.add_argument('limits_file',
-                        help="Name of the XML file describing the limits to "
-                        "configure.")
-    parser.add_argument('--debug', '-d',
-                        dest='debug',
-                        action='store_true',
-                        default=False,
-                        help="Run the tool in debug mode.")
-    parser.add_argument('--dryrun', '--dry_run', '--dry-run', '-n',
-                        dest='dry_run',
-                        action='store_true',
-                        default=False,
-                        help="Perform a dry run; inhibits loading data into "
-                        "the database.")
-    parser.add_argument('--noreload', '-R',
-                        dest='reload',
-                        action='store_false',
-                        default=True,
-                        help="Inhibit issuing a reload command.")
-    parser.add_argument('--reload-immediate', '-r',
-                        dest='reload',
-                        action='store_const',
-                        const='immediate',
-                        help="Cause all nodes to immediately reload the "
-                        "limits configuration.")
-    parser.add_argument('--reload-spread', '-s',
-                        dest='reload',
-                        metavar='SECS',
-                        type=float,
-                        action='store',
-                        help="Cause all nodes to reload the limits "
-                        "configuration over the specified number of seconds.")
-
-    args = parser.parse_args()
-    try:
-        _setup_limits(args.config, args.limits_file, args.reload,
-                      args.dry_run, args.debug)
-    except Exception as exc:
-        if args.debug:
-            raise
-        return str(exc)
+# For backwards compatibility
+_setup_limits = setup_limits
 
 
 def make_limit_node(root, limit):
@@ -342,7 +564,19 @@ def make_limit_node(root, limit):
             attr_node.text = str(value)
 
 
-def _dump_limits(conf_file, limits_file, debug=False):
+@add_argument('config',
+              dest='conf_file',
+              help="Name of the configuration file, for connecting "
+              "to the Redis database.")
+@add_argument('limits_file',
+              help="Name of the XML file that the limits will be "
+              "dumped to.")
+@add_argument('--debug', '-d',
+              dest='debug',
+              action='store_true',
+              default=False,
+              help="Run the tool in debug mode.")
+def dump_limits(conf_file, limits_file, debug=False):
     """
     Dump the current limits from the Redis database.
 
@@ -378,39 +612,27 @@ def _dump_limits(conf_file, limits_file, debug=False):
                      pretty_print=True)
 
 
-def dump_limits():
+# For backwards compatibility
+_dump_limits = dump_limits
+
+
+@add_argument('config',
+              dest='conf_file',
+              help="Name of the configuration file.")
+@add_argument('--log-config', '-l',
+              dest='logging',
+              action='store',
+              default=None,
+              help="Specify a logging configuration file.")
+@add_argument('--debug', '-d',
+              dest='debug',
+              action='store_true',
+              default=False,
+              help="Run the tool in debug mode.")
+@add_preprocessor(_setup_logging)
+def remote_daemon(conf_file):
     """
-    Console script entry point for dumping limits to an XML file.
-    """
-
-    parser = argparse.ArgumentParser(
-        description="Dump the current limits from the Redis database.",
-    )
-
-    parser.add_argument('config',
-                        help="Name of the configuration file, for connecting "
-                        "to the Redis database.")
-    parser.add_argument('limits_file',
-                        help="Name of the XML file that the limits will be "
-                        "dumped to.")
-    parser.add_argument('--debug', '-d',
-                        dest='debug',
-                        action='store_true',
-                        default=False,
-                        help="Run the tool in debug mode.")
-
-    args = parser.parse_args()
-    try:
-        _dump_limits(args.config, args.limits_file, args.debug)
-    except Exception as exc:
-        if args.debug:
-            raise
-        return str(exc)
-
-
-def _remote_daemon(conf_file):
-    """
-    Run the external control daemon as configured.
+    Run the external control daemon.
 
     :param conf_file: Name of the configuration file.
     """
@@ -421,40 +643,5 @@ def _remote_daemon(conf_file):
     daemon.serve()
 
 
-def remote_daemon():
-    """
-    Console script entry point for running the external control
-    daemon.
-    """
-
-    parser = argparse.ArgumentParser(
-        description="Run the external control daemon.",
-    )
-
-    parser.add_argument('config',
-                        help="Name of the configuration file.")
-    parser.add_argument('--log-config', '-l',
-                        dest='logging',
-                        action='store',
-                        default=None,
-                        help="Specify a logging configuration file.")
-    parser.add_argument('--debug', '-d',
-                        dest='debug',
-                        action='store_true',
-                        default=False,
-                        help="Run the tool in debug mode.")
-
-    args = parser.parse_args()
-
-    # Set up logging
-    if args.logging:
-        logging.config.fileConfig(args.logging)
-    else:
-        logging.basicConfig()
-
-    try:
-        _remote_daemon(args.config)
-    except Exception as exc:
-        if args.debug:
-            raise
-        return str(exc)
+# For backwards compatibility
+_remote_daemon = remote_daemon

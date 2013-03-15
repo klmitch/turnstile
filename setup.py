@@ -47,9 +47,9 @@ setup(
             'turnstile = turnstile.middleware:turnstile_filter',
         ],
         'console_scripts': [
-            'setup_limits = turnstile.tools:setup_limits',
-            'dump_limits = turnstile.tools:dump_limits',
-            'remote_daemon = turnstile.tools:remote_daemon',
+            'setup_limits = turnstile.tools:setup_limits.console',
+            'dump_limits = turnstile.tools:dump_limits.console',
+            'remote_daemon = turnstile.tools:remote_daemon.console',
         ],
     },
 )
