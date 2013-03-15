@@ -1,93 +1,14 @@
-import logging
-
-import stubout
-import unittest2
-
-from turnstile import config
-from turnstile import utils
-
-
-LOG = logging.getLogger('turnstile')
-
-
-class TestHandler(logging.Handler, object):
-    def __init__(self):
-        super(TestHandler, self).__init__(logging.DEBUG)
-
-        self.messages = []
-
-    def emit(self, record):
-        try:
-            self.messages.append(self.format(record))
-        except Exception:
-            pass
-
-    def get_messages(self, clear=False):
-        # Get the list of messages and clear it
-        messages = self.messages
-        if clear:
-            self.messages = []
-        return messages
-
-
-# Set up basic logging for tests
-test_handler = TestHandler()
-LOG.addHandler(test_handler)
-LOG.setLevel(logging.DEBUG)
-LOG.propagate = False
-
-
-class TestCase(unittest2.TestCase):
-    imports = {}
-
-    def setUp(self):
-        self.stubs = stubout.StubOutForTesting()
-
-        def fake_find_entrypoint(group, name, compat=True, required=False):
-            try:
-                return self.imports[name]
-            except KeyError as exc:
-                # Convert into an ImportError
-                raise ImportError("Failed to import %s: %s" %
-                                  (name, exc))
-
-        self.stubs.Set(utils, 'find_entrypoint', fake_find_entrypoint)
-
-        # Clear the log messages
-        test_handler.get_messages(True)
-
-    def tearDown(self):
-        self.stubs.UnsetAll()
-
-        # Clear the log messages
-        test_handler.get_messages(True)
-
-    @property
-    def log_messages(self):
-        # Retrieve and clear test log messages
-        return test_handler.get_messages()
-
-
-class GenericFakeClass(object):
-    def __init__(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
-
-
-class FakeConfig(config.Config):
-    def __init__(self, conf, db=None):
-        conf = dict(('control.%s' % k, v) for k, v in conf.items())
-        super(FakeConfig, self).__init__(conf_dict=conf)
-        self._db = db
-
-    def get_database(self, override=None):
-        return self._db
-
-
-class FakeMiddleware(object):
-    def __init__(self, conf=None):
-        self.config = conf or FakeConfig({})
-
-    @property
-    def db(self):
-        return self.config.get_database()
+# Copyright 2013 Rackspace
+# All Rights Reserved.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
