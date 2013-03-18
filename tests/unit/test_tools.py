@@ -15,6 +15,8 @@
 
 import argparse
 import inspect
+import StringIO
+import sys
 
 from lxml import etree
 import mock
@@ -785,3 +787,568 @@ class TestConsoleScripts(unittest2.TestCase):
     def test_remote_daemon(self):
         self.assertIsInstance(tools.remote_daemon, tools.ScriptAdaptor)
         self.assertGreater(len(tools.remote_daemon._arguments), 0)
+
+
+class TestSetupLimits(unittest2.TestCase):
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.parse', return_value=mock.Mock(**{
+        'getroot.return_value': [
+            mock.Mock(tag='limit', idx=0),
+            mock.Mock(tag='limit', idx=1),
+            mock.Mock(tag='limit', idx=2),
+            mock.Mock(tag='limit', idx=3),
+            mock.Mock(tag='limit', idx=4),
+            mock.Mock(tag='limit', idx=5),
+        ]
+    }))
+    @mock.patch('warnings.warn')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': 'db',
+    }))
+    @mock.patch.object(database, 'command')
+    @mock.patch.object(database, 'limit_update')
+    @mock.patch.object(tools, 'parse_limit_node',
+                       side_effect=lambda x, y, z: 'limit%d:%d' % (y, z.idx))
+    def test_basic(self, mock_parse_limit_node, mock_limit_update,
+                   mock_command, mock_Config, mock_warn, mock_etree_parse):
+        limits_tree = mock_etree_parse.return_value
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+
+        tools.setup_limits('conf_file', 'limits_file')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        mock_etree_parse.assert_called_once_with('limits_file')
+        limits_tree.getroot.assert_called_once_with()
+        self.assertFalse(mock_warn.called)
+        mock_parse_limit_node.assert_has_calls([
+            mock.call('db', 0, limits_tree.getroot.return_value[0]),
+            mock.call('db', 1, limits_tree.getroot.return_value[1]),
+            mock.call('db', 2, limits_tree.getroot.return_value[2]),
+            mock.call('db', 3, limits_tree.getroot.return_value[3]),
+            mock.call('db', 4, limits_tree.getroot.return_value[4]),
+            mock.call('db', 5, limits_tree.getroot.return_value[5]),
+        ])
+        mock_limit_update.assert_called_once_with(
+            'db', 'limits', ['limit%d:%d' % (i, i) for i in range(6)])
+        mock_command.assert_called_once_with('db', 'control', 'reload')
+        self.assertEqual(sys.stderr.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.parse', return_value=mock.Mock(**{
+        'getroot.return_value': [
+            mock.Mock(tag='limit', idx=0),
+            mock.Mock(tag='limit', idx=1),
+            mock.Mock(tag='limit', idx=2),
+            mock.Mock(tag='limit', idx=3),
+            mock.Mock(tag='limit', idx=4),
+            mock.Mock(tag='limit', idx=5),
+        ]
+    }))
+    @mock.patch('warnings.warn')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': 'db',
+    }))
+    @mock.patch.object(database, 'command')
+    @mock.patch.object(database, 'limit_update')
+    @mock.patch.object(tools, 'parse_limit_node',
+                       side_effect=lambda x, y, z: 'limit%d:%d' % (y, z.idx))
+    def test_altconf(self, mock_parse_limit_node, mock_limit_update,
+                     mock_command, mock_Config, mock_warn, mock_etree_parse):
+        limits_tree = mock_etree_parse.return_value
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = dict(
+            limits_key='alt_lims',
+            channel='alt_chan',
+        )
+
+        tools.setup_limits('conf_file', 'limits_file')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        mock_etree_parse.assert_called_once_with('limits_file')
+        limits_tree.getroot.assert_called_once_with()
+        self.assertFalse(mock_warn.called)
+        mock_parse_limit_node.assert_has_calls([
+            mock.call('db', 0, limits_tree.getroot.return_value[0]),
+            mock.call('db', 1, limits_tree.getroot.return_value[1]),
+            mock.call('db', 2, limits_tree.getroot.return_value[2]),
+            mock.call('db', 3, limits_tree.getroot.return_value[3]),
+            mock.call('db', 4, limits_tree.getroot.return_value[4]),
+            mock.call('db', 5, limits_tree.getroot.return_value[5]),
+        ])
+        mock_limit_update.assert_called_once_with(
+            'db', 'alt_lims', ['limit%d:%d' % (i, i) for i in range(6)])
+        mock_command.assert_called_once_with('db', 'alt_chan', 'reload')
+        self.assertEqual(sys.stderr.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.parse', return_value=mock.Mock(**{
+        'getroot.return_value': [
+            mock.Mock(tag='badtag', idx=0),
+            mock.Mock(tag='limit', idx=1),
+        ]
+    }))
+    @mock.patch('warnings.warn')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': 'db',
+    }))
+    @mock.patch.object(database, 'command')
+    @mock.patch.object(database, 'limit_update')
+    @mock.patch.object(tools, 'parse_limit_node',
+                       side_effect=test_utils.TestException("spam"))
+    def test_warnings(self, mock_parse_limit_node, mock_limit_update,
+                      mock_command, mock_Config, mock_warn, mock_etree_parse):
+        limits_tree = mock_etree_parse.return_value
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+
+        tools.setup_limits('conf_file', 'limits_file')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        mock_etree_parse.assert_called_once_with('limits_file')
+        limits_tree.getroot.assert_called_once_with()
+        mock_warn.assert_has_calls([
+            mock.call("Unrecognized tag 'badtag' in limits file at index 0"),
+            mock.call("Couldn't understand limit at index 1: spam"),
+        ])
+        mock_limit_update.assert_called_once_with('db', 'limits', [])
+        mock_command.assert_called_once_with('db', 'control', 'reload')
+        self.assertEqual(sys.stderr.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.parse', return_value=mock.Mock(**{
+        'getroot.return_value': [
+            mock.MagicMock(tag='limit', idx=0),
+            mock.MagicMock(tag='limit', idx=1),
+        ]
+    }))
+    @mock.patch('warnings.warn')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': 'db',
+    }))
+    @mock.patch.object(database, 'command')
+    @mock.patch.object(database, 'limit_update')
+    @mock.patch.object(tools, 'parse_limit_node',
+                       side_effect=lambda x, y, z: 'limit%d:%d' % (y, z.idx))
+    def test_debug(self, mock_parse_limit_node, mock_limit_update,
+                   mock_command, mock_Config, mock_warn, mock_etree_parse):
+        limits_tree = mock_etree_parse.return_value
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+
+        tools.setup_limits('conf_file', 'limits_file', debug=True)
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        mock_etree_parse.assert_called_once_with('limits_file')
+        limits_tree.getroot.assert_called_once_with()
+        self.assertFalse(mock_warn.called)
+        mock_parse_limit_node.assert_has_calls([
+            mock.call('db', 0, limits_tree.getroot.return_value[0]),
+            mock.call('db', 1, limits_tree.getroot.return_value[1]),
+        ])
+        mock_limit_update.assert_called_once_with(
+            'db', 'limits', ['limit%d:%d' % (i, i) for i in range(2)])
+        mock_command.assert_called_once_with('db', 'control', 'reload')
+        self.assertEqual(sys.stderr.getvalue(),
+                         'Installing the following limits:\n'
+                         "  'limit0:0'\n"
+                         "  'limit1:1'\n"
+                         'Issuing command: reload\n')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.parse', return_value=mock.Mock(**{
+        'getroot.return_value': [
+            mock.MagicMock(tag='limit', idx=0),
+            mock.MagicMock(tag='limit', idx=1),
+        ]
+    }))
+    @mock.patch('warnings.warn')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': 'db',
+    }))
+    @mock.patch.object(database, 'command')
+    @mock.patch.object(database, 'limit_update')
+    @mock.patch.object(tools, 'parse_limit_node',
+                       side_effect=lambda x, y, z: 'limit%d:%d' % (y, z.idx))
+    def test_dryrun(self, mock_parse_limit_node, mock_limit_update,
+                    mock_command, mock_Config, mock_warn, mock_etree_parse):
+        limits_tree = mock_etree_parse.return_value
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+
+        tools.setup_limits('conf_file', 'limits_file', dry_run=True)
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        mock_etree_parse.assert_called_once_with('limits_file')
+        limits_tree.getroot.assert_called_once_with()
+        self.assertFalse(mock_warn.called)
+        mock_parse_limit_node.assert_has_calls([
+            mock.call('db', 0, limits_tree.getroot.return_value[0]),
+            mock.call('db', 1, limits_tree.getroot.return_value[1]),
+        ])
+        self.assertFalse(mock_limit_update.called)
+        self.assertFalse(mock_command.called)
+        self.assertEqual(sys.stderr.getvalue(),
+                         'Installing the following limits:\n'
+                         "  'limit0:0'\n"
+                         "  'limit1:1'\n"
+                         'Issuing command: reload\n')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.parse', return_value=mock.Mock(**{
+        'getroot.return_value': [
+            mock.Mock(tag='limit', idx=0),
+            mock.Mock(tag='limit', idx=1),
+            mock.Mock(tag='limit', idx=2),
+            mock.Mock(tag='limit', idx=3),
+            mock.Mock(tag='limit', idx=4),
+            mock.Mock(tag='limit', idx=5),
+        ]
+    }))
+    @mock.patch('warnings.warn')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': 'db',
+    }))
+    @mock.patch.object(database, 'command')
+    @mock.patch.object(database, 'limit_update')
+    @mock.patch.object(tools, 'parse_limit_node',
+                       side_effect=lambda x, y, z: 'limit%d:%d' % (y, z.idx))
+    def test_noreload(self, mock_parse_limit_node, mock_limit_update,
+                      mock_command, mock_Config, mock_warn, mock_etree_parse):
+        limits_tree = mock_etree_parse.return_value
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+
+        tools.setup_limits('conf_file', 'limits_file', do_reload=False)
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        mock_etree_parse.assert_called_once_with('limits_file')
+        limits_tree.getroot.assert_called_once_with()
+        self.assertFalse(mock_warn.called)
+        mock_parse_limit_node.assert_has_calls([
+            mock.call('db', 0, limits_tree.getroot.return_value[0]),
+            mock.call('db', 1, limits_tree.getroot.return_value[1]),
+            mock.call('db', 2, limits_tree.getroot.return_value[2]),
+            mock.call('db', 3, limits_tree.getroot.return_value[3]),
+            mock.call('db', 4, limits_tree.getroot.return_value[4]),
+            mock.call('db', 5, limits_tree.getroot.return_value[5]),
+        ])
+        mock_limit_update.assert_called_once_with(
+            'db', 'limits', ['limit%d:%d' % (i, i) for i in range(6)])
+        self.assertFalse(mock_command.called)
+        self.assertEqual(sys.stderr.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.parse', return_value=mock.Mock(**{
+        'getroot.return_value': [
+            mock.Mock(tag='limit', idx=0),
+            mock.Mock(tag='limit', idx=1),
+            mock.Mock(tag='limit', idx=2),
+            mock.Mock(tag='limit', idx=3),
+            mock.Mock(tag='limit', idx=4),
+            mock.Mock(tag='limit', idx=5),
+        ]
+    }))
+    @mock.patch('warnings.warn')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': 'db',
+    }))
+    @mock.patch.object(database, 'command')
+    @mock.patch.object(database, 'limit_update')
+    @mock.patch.object(tools, 'parse_limit_node',
+                       side_effect=lambda x, y, z: 'limit%d:%d' % (y, z.idx))
+    def test_reload_spread_int(self, mock_parse_limit_node, mock_limit_update,
+                               mock_command, mock_Config, mock_warn,
+                               mock_etree_parse):
+        limits_tree = mock_etree_parse.return_value
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+
+        tools.setup_limits('conf_file', 'limits_file', do_reload=42)
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        mock_etree_parse.assert_called_once_with('limits_file')
+        limits_tree.getroot.assert_called_once_with()
+        self.assertFalse(mock_warn.called)
+        mock_parse_limit_node.assert_has_calls([
+            mock.call('db', 0, limits_tree.getroot.return_value[0]),
+            mock.call('db', 1, limits_tree.getroot.return_value[1]),
+            mock.call('db', 2, limits_tree.getroot.return_value[2]),
+            mock.call('db', 3, limits_tree.getroot.return_value[3]),
+            mock.call('db', 4, limits_tree.getroot.return_value[4]),
+            mock.call('db', 5, limits_tree.getroot.return_value[5]),
+        ])
+        mock_limit_update.assert_called_once_with(
+            'db', 'limits', ['limit%d:%d' % (i, i) for i in range(6)])
+        mock_command.assert_called_once_with(
+            'db', 'control', 'reload', 'spread', 42)
+        self.assertEqual(sys.stderr.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.parse', return_value=mock.Mock(**{
+        'getroot.return_value': [
+            mock.Mock(tag='limit', idx=0),
+            mock.Mock(tag='limit', idx=1),
+            mock.Mock(tag='limit', idx=2),
+            mock.Mock(tag='limit', idx=3),
+            mock.Mock(tag='limit', idx=4),
+            mock.Mock(tag='limit', idx=5),
+        ]
+    }))
+    @mock.patch('warnings.warn')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': 'db',
+    }))
+    @mock.patch.object(database, 'command')
+    @mock.patch.object(database, 'limit_update')
+    @mock.patch.object(tools, 'parse_limit_node',
+                       side_effect=lambda x, y, z: 'limit%d:%d' % (y, z.idx))
+    def test_reload_spread_str(self, mock_parse_limit_node, mock_limit_update,
+                               mock_command, mock_Config, mock_warn,
+                               mock_etree_parse):
+        limits_tree = mock_etree_parse.return_value
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+
+        tools.setup_limits('conf_file', 'limits_file', do_reload='42')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        mock_etree_parse.assert_called_once_with('limits_file')
+        limits_tree.getroot.assert_called_once_with()
+        self.assertFalse(mock_warn.called)
+        mock_parse_limit_node.assert_has_calls([
+            mock.call('db', 0, limits_tree.getroot.return_value[0]),
+            mock.call('db', 1, limits_tree.getroot.return_value[1]),
+            mock.call('db', 2, limits_tree.getroot.return_value[2]),
+            mock.call('db', 3, limits_tree.getroot.return_value[3]),
+            mock.call('db', 4, limits_tree.getroot.return_value[4]),
+            mock.call('db', 5, limits_tree.getroot.return_value[5]),
+        ])
+        mock_limit_update.assert_called_once_with(
+            'db', 'limits', ['limit%d:%d' % (i, i) for i in range(6)])
+        mock_command.assert_called_once_with(
+            'db', 'control', 'reload', 'spread', '42')
+        self.assertEqual(sys.stderr.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.parse', return_value=mock.Mock(**{
+        'getroot.return_value': [
+            mock.Mock(tag='limit', idx=0),
+            mock.Mock(tag='limit', idx=1),
+            mock.Mock(tag='limit', idx=2),
+            mock.Mock(tag='limit', idx=3),
+            mock.Mock(tag='limit', idx=4),
+            mock.Mock(tag='limit', idx=5),
+        ]
+    }))
+    @mock.patch('warnings.warn')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': 'db',
+    }))
+    @mock.patch.object(database, 'command')
+    @mock.patch.object(database, 'limit_update')
+    @mock.patch.object(tools, 'parse_limit_node',
+                       side_effect=lambda x, y, z: 'limit%d:%d' % (y, z.idx))
+    def test_reload_spread_str(self, mock_parse_limit_node, mock_limit_update,
+                               mock_command, mock_Config, mock_warn,
+                               mock_etree_parse):
+        limits_tree = mock_etree_parse.return_value
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+
+        tools.setup_limits('conf_file', 'limits_file', do_reload='immediate')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        mock_etree_parse.assert_called_once_with('limits_file')
+        limits_tree.getroot.assert_called_once_with()
+        self.assertFalse(mock_warn.called)
+        mock_parse_limit_node.assert_has_calls([
+            mock.call('db', 0, limits_tree.getroot.return_value[0]),
+            mock.call('db', 1, limits_tree.getroot.return_value[1]),
+            mock.call('db', 2, limits_tree.getroot.return_value[2]),
+            mock.call('db', 3, limits_tree.getroot.return_value[3]),
+            mock.call('db', 4, limits_tree.getroot.return_value[4]),
+            mock.call('db', 5, limits_tree.getroot.return_value[5]),
+        ])
+        mock_limit_update.assert_called_once_with(
+            'db', 'limits', ['limit%d:%d' % (i, i) for i in range(6)])
+        mock_command.assert_called_once_with(
+            'db', 'control', 'reload', 'immediate')
+        self.assertEqual(sys.stderr.getvalue(), '')
+
+
+class TestDumpLimits(unittest2.TestCase):
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.Element', return_value=mock.Mock())
+    @mock.patch('lxml.etree.ElementTree', return_value=mock.Mock())
+    @mock.patch('msgpack.loads', side_effect=lambda x: x)
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'zrange.return_value': [
+                'limit0',
+                'limit1',
+                'limit2',
+            ],
+        })}))
+    @mock.patch.object(limits.Limit, 'hydrate', side_effect=lambda x, y: y)
+    @mock.patch.object(tools, 'make_limit_node')
+    def test_basic(self, mock_make_limit_node, mock_hydrate, mock_Config,
+                   mock_loads, mock_ElementTree, mock_Element):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        root = mock_Element.return_value
+        limit_tree = mock_ElementTree.return_value
+
+        tools.dump_limits('conf_file', 'limits_file')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        db.zrange.assert_called_once_with('limits', 0, -1)
+        mock_loads.assert_has_calls([
+            mock.call('limit0'),
+            mock.call('limit1'),
+            mock.call('limit2'),
+        ])
+        mock_hydrate.assert_has_calls([
+            mock.call(db, 'limit0'),
+            mock.call(db, 'limit1'),
+            mock.call(db, 'limit2'),
+        ])
+        mock_Element.assert_called_once_with('limits')
+        mock_ElementTree.assert_called_once_with(root)
+        mock_make_limit_node.assert_has_calls([
+            mock.call(root, 'limit0'),
+            mock.call(root, 'limit1'),
+            mock.call(root, 'limit2'),
+        ])
+        limit_tree.write.assert_called_once_with(
+            'limits_file', xml_declaration=True, encoding='UTF-8',
+            pretty_print=True)
+        self.assertEqual(sys.stderr.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.Element', return_value=mock.Mock())
+    @mock.patch('lxml.etree.ElementTree', return_value=mock.Mock())
+    @mock.patch('msgpack.loads', side_effect=lambda x: x)
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'zrange.return_value': [
+                'limit0',
+                'limit1',
+                'limit2',
+            ],
+        })}))
+    @mock.patch.object(limits.Limit, 'hydrate', side_effect=lambda x, y: y)
+    @mock.patch.object(tools, 'make_limit_node')
+    def test_altconf(self, mock_make_limit_node, mock_hydrate, mock_Config,
+                     mock_loads, mock_ElementTree, mock_Element):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = dict(limits_key='alt_lims')
+        db = conf.get_database.return_value
+        root = mock_Element.return_value
+        limit_tree = mock_ElementTree.return_value
+
+        tools.dump_limits('conf_file', 'limits_file')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        db.zrange.assert_called_once_with('alt_lims', 0, -1)
+        mock_loads.assert_has_calls([
+            mock.call('limit0'),
+            mock.call('limit1'),
+            mock.call('limit2'),
+        ])
+        mock_hydrate.assert_has_calls([
+            mock.call(db, 'limit0'),
+            mock.call(db, 'limit1'),
+            mock.call(db, 'limit2'),
+        ])
+        mock_Element.assert_called_once_with('limits')
+        mock_ElementTree.assert_called_once_with(root)
+        mock_make_limit_node.assert_has_calls([
+            mock.call(root, 'limit0'),
+            mock.call(root, 'limit1'),
+            mock.call(root, 'limit2'),
+        ])
+        limit_tree.write.assert_called_once_with(
+            'limits_file', xml_declaration=True, encoding='UTF-8',
+            pretty_print=True)
+        self.assertEqual(sys.stderr.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.Element', return_value=mock.Mock())
+    @mock.patch('lxml.etree.ElementTree', return_value=mock.Mock())
+    @mock.patch('msgpack.loads', side_effect=lambda x: x)
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'zrange.return_value': [
+                'limit0',
+                'limit1',
+                'limit2',
+            ],
+        })}))
+    @mock.patch.object(limits.Limit, 'hydrate', side_effect=lambda x, y: y)
+    @mock.patch.object(tools, 'make_limit_node')
+    def test_debug(self, mock_make_limit_node, mock_hydrate, mock_Config,
+                   mock_loads, mock_ElementTree, mock_Element):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        root = mock_Element.return_value
+        limit_tree = mock_ElementTree.return_value
+
+        tools.dump_limits('conf_file', 'limits_file', debug=True)
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        db.zrange.assert_called_once_with('limits', 0, -1)
+        mock_loads.assert_has_calls([
+            mock.call('limit0'),
+            mock.call('limit1'),
+            mock.call('limit2'),
+        ])
+        mock_hydrate.assert_has_calls([
+            mock.call(db, 'limit0'),
+            mock.call(db, 'limit1'),
+            mock.call(db, 'limit2'),
+        ])
+        mock_Element.assert_called_once_with('limits')
+        mock_ElementTree.assert_called_once_with(root)
+        mock_make_limit_node.assert_has_calls([
+            mock.call(root, 'limit0'),
+            mock.call(root, 'limit1'),
+            mock.call(root, 'limit2'),
+        ])
+        limit_tree.write.assert_called_once_with(
+            'limits_file', xml_declaration=True, encoding='UTF-8',
+            pretty_print=True)
+        self.assertEqual(sys.stderr.getvalue(),
+                         "Dumping limit index 0: 'limit0'\n"
+                         "Dumping limit index 1: 'limit1'\n"
+                         "Dumping limit index 2: 'limit2'\n"
+                         "Dumping limits to file 'limits_file'\n")
+
+
+class TestRemoteDaemon(unittest2.TestCase):
+    @mock.patch('eventlet.monkey_patch')
+    @mock.patch.object(config, 'Config', return_value=mock.Mock())
+    @mock.patch.object(remote, 'RemoteControlDaemon', return_value=mock.Mock())
+    def test_basic(self, mock_RemoteControlDaemon, mock_Config,
+                   mock_monkey_patch):
+        tools.remote_daemon('conf_file')
+
+        mock_monkey_patch.assert_called_once_with()
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        mock_RemoteControlDaemon.assert_called_once_with(
+            None, mock_Config.return_value)
+        mock_RemoteControlDaemon.return_value.serve.assert_called_once_with()
