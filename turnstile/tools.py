@@ -396,8 +396,8 @@ def parse_limit_node(db, idx, limit):
     return klass(db, **attrs)
 
 
-@add_argument('config',
-              dest='conf_file',
+@add_argument('conf_file',
+              metavar='config',
               help="Name of the configuration file, for connecting "
               "to the Redis database.")
 @add_argument('limits_file',
@@ -564,8 +564,8 @@ def make_limit_node(root, limit):
             attr_node.text = str(value)
 
 
-@add_argument('config',
-              dest='conf_file',
+@add_argument('conf_file',
+              metavar='config',
               help="Name of the configuration file, for connecting "
               "to the Redis database.")
 @add_argument('limits_file',
@@ -616,8 +616,8 @@ def dump_limits(conf_file, limits_file, debug=False):
 _dump_limits = dump_limits
 
 
-@add_argument('config',
-              dest='conf_file',
+@add_argument('conf_file',
+              dest='config',
               help="Name of the configuration file.")
 @add_argument('--log-config', '-l',
               dest='logging',
