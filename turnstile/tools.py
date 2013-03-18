@@ -617,7 +617,7 @@ _dump_limits = dump_limits
 
 
 @add_argument('conf_file',
-              dest='config',
+              metavar='config',
               help="Name of the configuration file.")
 @add_argument('--log-config', '-l',
               dest='logging',
