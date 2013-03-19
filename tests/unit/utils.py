@@ -168,3 +168,13 @@ def compare_xml(expected, actual):
         raise AssertionError("%s: XML does not match" % state)
     elif result is not True:
         return result
+
+
+class TimeIncrementor(object):
+    def __init__(self, interval, start=1000000.0):
+        self.time = start - interval
+        self.interval = interval
+
+    def __call__(self):
+        self.time += self.interval
+        return self.time

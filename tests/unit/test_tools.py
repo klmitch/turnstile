@@ -788,6 +788,10 @@ class TestConsoleScripts(unittest2.TestCase):
         self.assertIsInstance(tools.remote_daemon, tools.ScriptAdaptor)
         self.assertGreater(len(tools.remote_daemon._arguments), 0)
 
+    def test_turnstile_command(self):
+        self.assertIsInstance(tools.turnstile_command, tools.ScriptAdaptor)
+        self.assertGreater(len(tools.turnstile_command._arguments), 0)
+
 
 class TestSetupLimits(unittest2.TestCase):
     @mock.patch.object(sys, 'stderr', StringIO.StringIO())
@@ -1352,3 +1356,399 @@ class TestRemoteDaemon(unittest2.TestCase):
         mock_RemoteControlDaemon.assert_called_once_with(
             None, mock_Config.return_value)
         mock_RemoteControlDaemon.return_value.serve.assert_called_once_with()
+
+
+class TestTurnstileCommand(unittest2.TestCase):
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
+    @mock.patch('time.time', side_effect=test_utils.TimeIncrementor(10))
+    @mock.patch('uuid.uuid4', return_value='random_string')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'pubsub.return_value': mock.Mock(**{
+                'listen.return_value': [],
+            }),
+        })}))
+    @mock.patch.object(database, 'command')
+    def test_basic(self, mock_command, mock_Config, mock_uuid4, mock_time):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        pubsub = db.pubsub.return_value
+
+        tools.turnstile_command('conf_file', 'CoMmAnD')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        self.assertFalse(mock_uuid4.called)
+        self.assertFalse(mock_time.called)
+        mock_command.assert_called_once_with(db, 'control', 'command')
+        self.assertFalse(db.pubsub.called)
+        self.assertEqual(sys.stderr.getvalue(), '')
+        self.assertEqual(sys.stdout.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
+    @mock.patch('time.time', side_effect=test_utils.TimeIncrementor(10))
+    @mock.patch('uuid.uuid4', return_value='random_string')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'pubsub.return_value': mock.Mock(**{
+                'listen.return_value': [],
+            }),
+        })}))
+    @mock.patch.object(database, 'command')
+    def test_withargs(self, mock_command, mock_Config, mock_uuid4, mock_time):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        pubsub = db.pubsub.return_value
+
+        tools.turnstile_command('conf_file', 'CoMmAnD', ['arg1', 'arg2'])
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        self.assertFalse(mock_uuid4.called)
+        self.assertFalse(mock_time.called)
+        mock_command.assert_called_once_with(db, 'control', 'command',
+                                             'arg1', 'arg2')
+        self.assertFalse(db.pubsub.called)
+        self.assertEqual(sys.stderr.getvalue(), '')
+        self.assertEqual(sys.stdout.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
+    @mock.patch('time.time', side_effect=test_utils.TimeIncrementor(10))
+    @mock.patch('uuid.uuid4', return_value='random_string')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'pubsub.return_value': mock.Mock(**{
+                'listen.return_value': [],
+            }),
+        })}))
+    @mock.patch.object(database, 'command')
+    def test_altconf(self, mock_command, mock_Config, mock_uuid4, mock_time):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = dict(channel='alt_chan')
+        db = conf.get_database.return_value
+        pubsub = db.pubsub.return_value
+
+        tools.turnstile_command('conf_file', 'CoMmAnD')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        self.assertFalse(mock_uuid4.called)
+        self.assertFalse(mock_time.called)
+        mock_command.assert_called_once_with(db, 'alt_chan', 'command')
+        self.assertFalse(db.pubsub.called)
+        self.assertEqual(sys.stderr.getvalue(), '')
+        self.assertEqual(sys.stdout.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
+    @mock.patch('time.time', side_effect=test_utils.TimeIncrementor(10))
+    @mock.patch('uuid.uuid4', return_value='random_string')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'pubsub.return_value': mock.Mock(**{
+                'listen.return_value': [{
+                    'type': 'badtype',
+                    'channel': 'response',
+                    'data': 'test:bad:type',
+                }, {
+                    'type': 'pmessage',
+                    'channel': 'badchan',
+                    'data': 'test:bad:data:pmessage',
+                }, {
+                    'type': 'message',
+                    'channel': 'badchan',
+                    'data': 'test:bad:data:message',
+                }, {
+                    'type': 'pmessage',
+                    'channel': 'response',
+                    'data': 'test:one:two:three',
+                }, {
+                    'type': 'message',
+                    'channel': 'response',
+                    'data': 'test:four:five:six',
+                }],
+            }),
+        })}))
+    @mock.patch.object(database, 'command')
+    def test_listen(self, mock_command, mock_Config, mock_uuid4, mock_time):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        pubsub = db.pubsub.return_value
+
+        tools.turnstile_command('conf_file', 'CoMmAnD', channel='response')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        self.assertFalse(mock_uuid4.called)
+        self.assertFalse(mock_time.called)
+        mock_command.assert_called_once_with(db, 'control', 'command')
+        db.pubsub.assert_called_once_with()
+        pubsub.subscribe.assert_called_once_with('response')
+        pubsub.listen.assert_called_once_with()
+        self.assertEqual(sys.stderr.getvalue(), '')
+        self.assertEqual(sys.stdout.getvalue(),
+                         'Response     1: test one two three\n'
+                         'Response     2: test four five six\n')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
+    @mock.patch('time.time', side_effect=test_utils.TimeIncrementor(10))
+    @mock.patch('uuid.uuid4', return_value='random_string')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'pubsub.return_value': mock.Mock(**{
+                'listen.return_value': [{
+                    'type': 'badtype',
+                    'channel': 'response',
+                    'data': 'test:bad:type',
+                }, {
+                    'type': 'pmessage',
+                    'channel': 'badchan',
+                    'data': 'test:bad:data:pmessage',
+                }, {
+                    'type': 'message',
+                    'channel': 'badchan',
+                    'data': 'test:bad:data:message',
+                }, {
+                    'type': 'pmessage',
+                    'channel': 'response',
+                    'data': 'test:one:two:three',
+                }, {
+                    'type': 'message',
+                    'channel': 'response',
+                    'data': 'test:four:five:six',
+                }],
+            }),
+        })}))
+    @mock.patch.object(database, 'command')
+    def test_debug(self, mock_command, mock_Config, mock_uuid4, mock_time):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        pubsub = db.pubsub.return_value
+
+        tools.turnstile_command('conf_file', 'CoMmAnD', ['arg1', 'arg2'],
+                                channel='response', debug=True)
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        self.assertFalse(mock_uuid4.called)
+        self.assertFalse(mock_time.called)
+        mock_command.assert_called_once_with(db, 'control', 'command',
+                                             'arg1', 'arg2')
+        db.pubsub.assert_called_once_with()
+        pubsub.subscribe.assert_called_once_with('response')
+        pubsub.listen.assert_called_once_with()
+        self.assertEqual(sys.stderr.getvalue(),
+                         'Issuing command: command arg1 arg2\n'
+                         "Received message: {'channel': 'response', "
+                         "'data': 'test:bad:type', "
+                         "'type': 'badtype'}\n"
+                         "Received message: {'channel': 'badchan', "
+                         "'data': 'test:bad:data:pmessage', "
+                         "'type': 'pmessage'}\n"
+                         "Received message: {'channel': 'badchan', "
+                         "'data': 'test:bad:data:message', "
+                         "'type': 'message'}\n"
+                         "Received message: {'channel': 'response', "
+                         "'data': 'test:one:two:three', "
+                         "'type': 'pmessage'}\n"
+                         "Received message: {'channel': 'response', "
+                         "'data': 'test:four:five:six', "
+                         "'type': 'message'}\n")
+        self.assertEqual(sys.stdout.getvalue(),
+                         'Response     1: test one two three\n'
+                         'Response     2: test four five six\n')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
+    @mock.patch('time.time', side_effect=test_utils.TimeIncrementor(10))
+    @mock.patch('uuid.uuid4', return_value='random_string')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'pubsub.return_value': mock.Mock(**{
+                'listen.side_effect': KeyboardInterrupt,
+            }),
+        })}))
+    @mock.patch.object(database, 'command')
+    def test_interrupt(self, mock_command, mock_Config, mock_uuid4, mock_time):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        pubsub = db.pubsub.return_value
+
+        tools.turnstile_command('conf_file', 'CoMmAnD', channel='response')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        self.assertFalse(mock_uuid4.called)
+        self.assertFalse(mock_time.called)
+        mock_command.assert_called_once_with(db, 'control', 'command')
+        db.pubsub.assert_called_once_with()
+        pubsub.subscribe.assert_called_once_with('response')
+        pubsub.listen.assert_called_once_with()
+        self.assertEqual(sys.stderr.getvalue(), '')
+        self.assertEqual(sys.stdout.getvalue(), '')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
+    @mock.patch('time.time', side_effect=test_utils.TimeIncrementor(10))
+    @mock.patch('uuid.uuid4', return_value='random_string')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'pubsub.return_value': mock.Mock(**{
+                'listen.return_value': [{
+                    'type': 'message',
+                    'channel': 'random_string',
+                    'data': 'pong',
+                }, {
+                    'type': 'message',
+                    'channel': 'random_string',
+                    'data': 'pong:node',
+                }, {
+                    'type': 'message',
+                    'channel': 'random_string',
+                    'data': 'pong::1000000.0',
+                }, {
+                    'type': 'message',
+                    'channel': 'random_string',
+                    'data': 'pong:node:1000000.0',
+                }],
+            }),
+        })}))
+    @mock.patch.object(database, 'command')
+    def test_ping_basic(self, mock_command, mock_Config, mock_uuid4,
+                        mock_time):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        pubsub = db.pubsub.return_value
+
+        tools.turnstile_command('conf_file', 'ping')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        mock_uuid4.assert_called_once_with()
+        self.assertTrue(mock_time.called)
+        mock_command.assert_called_once_with(db, 'control', 'ping',
+                                             'random_string', 1000000.0)
+        db.pubsub.assert_called_once_with()
+        pubsub.subscribe.assert_called_once_with('random_string')
+        pubsub.listen.assert_called_once_with()
+        self.assertEqual(sys.stderr.getvalue(), '')
+        self.assertEqual(sys.stdout.getvalue(),
+                         'Response     1: pong\n'
+                         'Response     2: pong node\n'
+                         'Response     3: pong  1000000.0 (RTT 3000.00ms)\n'
+                         'Response     4: pong node 1000000.0 '
+                         '(RTT 4000.00ms)\n')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
+    @mock.patch('time.time', side_effect=test_utils.TimeIncrementor(10))
+    @mock.patch('uuid.uuid4', return_value='random_string')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'pubsub.return_value': mock.Mock(**{
+                'listen.return_value': [{
+                    'type': 'message',
+                    'channel': 'pongchan',
+                    'data': 'pong',
+                }, {
+                    'type': 'message',
+                    'channel': 'pongchan',
+                    'data': 'pong:node',
+                }, {
+                    'type': 'message',
+                    'channel': 'pongchan',
+                    'data': 'pong::1000000.0',
+                }, {
+                    'type': 'message',
+                    'channel': 'pongchan',
+                    'data': 'pong:node:1000000.0',
+                }],
+            }),
+        })}))
+    @mock.patch.object(database, 'command')
+    def test_ping_channel(self, mock_command, mock_Config, mock_uuid4,
+                          mock_time):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        pubsub = db.pubsub.return_value
+
+        tools.turnstile_command('conf_file', 'ping', ['pongchan'])
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        self.assertFalse(mock_uuid4.called)
+        self.assertTrue(mock_time.called)
+        mock_command.assert_called_once_with(db, 'control', 'ping',
+                                             'pongchan', 1000000.0)
+        db.pubsub.assert_called_once_with()
+        pubsub.subscribe.assert_called_once_with('pongchan')
+        pubsub.listen.assert_called_once_with()
+        self.assertEqual(sys.stderr.getvalue(), '')
+        self.assertEqual(sys.stdout.getvalue(),
+                         'Response     1: pong\n'
+                         'Response     2: pong node\n'
+                         'Response     3: pong  1000000.0 (RTT 3000.00ms)\n'
+                         'Response     4: pong node 1000000.0 '
+                         '(RTT 4000.00ms)\n')
+
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
+    @mock.patch('time.time', side_effect=test_utils.TimeIncrementor(10))
+    @mock.patch('uuid.uuid4', return_value='random_string')
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'pubsub.return_value': mock.Mock(**{
+                'listen.return_value': [{
+                    'type': 'message',
+                    'channel': 'pongchan',
+                    'data': 'pong',
+                }, {
+                    'type': 'message',
+                    'channel': 'pongchan',
+                    'data': 'pong:node',
+                }, {
+                    'type': 'message',
+                    'channel': 'pongchan',
+                    'data': 'pong::1000000.0',
+                }, {
+                    'type': 'message',
+                    'channel': 'pongchan',
+                    'data': 'pong:node:1000000.0',
+                }],
+            }),
+        })}))
+    @mock.patch.object(database, 'command')
+    def test_ping_echo(self, mock_command, mock_Config, mock_uuid4, mock_time):
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        pubsub = db.pubsub.return_value
+
+        tools.turnstile_command('conf_file', 'ping', ['pongchan', 'echo'])
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        self.assertFalse(mock_uuid4.called)
+        self.assertFalse(mock_time.called)
+        mock_command.assert_called_once_with(db, 'control', 'ping',
+                                             'pongchan', 'echo')
+        db.pubsub.assert_called_once_with()
+        pubsub.subscribe.assert_called_once_with('pongchan')
+        pubsub.listen.assert_called_once_with()
+        self.assertEqual(sys.stderr.getvalue(), '')
+        self.assertEqual(sys.stdout.getvalue(),
+                         'Response     1: pong\n'
+                         'Response     2: pong node\n'
+                         'Response     3: pong  1000000.0\n'
+                         'Response     4: pong node 1000000.0\n')

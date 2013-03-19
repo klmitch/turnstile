@@ -50,6 +50,7 @@ setup(
             'setup_limits = turnstile.tools:setup_limits.console',
             'dump_limits = turnstile.tools:dump_limits.console',
             'remote_daemon = turnstile.tools:remote_daemon.console',
+            'turnstile_command = turnstile.tools:turnstile_command.console',
         ],
     },
 )

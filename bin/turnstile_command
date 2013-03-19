@@ -1,0 +1,41 @@
+#!/usr/bin/python
+#
+# Copyright 2012 Rackspace
+# All Rights Reserved.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+#
+#
+# Note: This executable is provided as a convenience for running this
+# tool out of the source tree.  It is not, nor should it be, directly
+# installed by setup.py.  Turnstile uses console_scripts entry points
+# to advertise executable commands.  You can find the implementation
+# of this script in the turnstile/tools.py file.
+
+import os
+import sys
+
+
+# We need the tools module from turnstile
+poss_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
+                                            os.pardir,
+                                            os.pardir))
+if os.path.exists(os.path.join(poss_topdir, 'turnstile', '__init__.py')):
+    sys.path.insert(0, poss_topdir)
+
+
+from turnstile import tools
+
+
+if __name__ == '__main__':
+    tools.turnstile_command.console()

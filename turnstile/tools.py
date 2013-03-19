@@ -17,8 +17,11 @@ import functools
 import inspect
 import logging
 import logging.config
+import pprint
 import sys
 import textwrap
+import time
+import uuid
 import warnings
 
 import argparse
@@ -645,3 +648,119 @@ def remote_daemon(conf_file):
 
 # For backwards compatibility
 _remote_daemon = remote_daemon
+
+
+@add_argument('conf_file',
+              metavar='config',
+              help="Name of the configuration file.")
+@add_argument('command',
+              help="The command to execute.  Note that 'ping' is handled "
+              "specially; in particular, the --listen parameter is implied.")
+@add_argument('arguments',
+              nargs='*',
+              help="The arguments to pass for the command.  Note that the "
+              "colon character (':') cannot be used.")
+@add_argument('--listen', '-l',
+              dest='channel',
+              action='store',
+              default=None,
+              help="A channel to listen on for the command responses.  Use "
+              "C-c (or your systems keyboard interrupt sequence) to stop "
+              "waiting for responses.")
+@add_argument('--debug', '-d',
+              dest='debug',
+              action='store_true',
+              default=False,
+              help="Run the tool in debug mode.")
+def turnstile_command(conf_file, command, arguments=[], channel=None,
+                      debug=False):
+    """
+    Issue a command to all running control daemons.
+
+    :param conf_file: Name of the configuration file.
+    :param command: The command to execute.  Note that 'ping' is
+                    handled specially; in particular, the "channel"
+                    parameter is implied.  (A random value will be
+                    used for the channel to listen on.)
+    :param arguments: A list of arguments for the command.  Note that
+                      the colon character (':') cannot be used.
+    :param channel: If not None, specifies the name of a message
+                    channel to listen for responses on.  Will wait
+                    indefinitely; to terminate the listening loop, use
+                    the keyboard interrupt sequence.
+    :param debug: If True, debugging messages are emitted while
+                  sending the command.
+    """
+
+    # Connect to the database...
+    conf = config.Config(conf_file=conf_file)
+    db = conf.get_database()
+    control_channel = conf['control'].get('channel', 'control')
+
+    # Now, set up the command
+    command = command.lower()
+    ts_conv = False
+    if command == 'ping':
+        # We handle 'ping' specially; first, figure out the channel
+        if arguments:
+            channel = arguments[0]
+        else:
+            channel = str(uuid.uuid4())
+            arguments = [channel]
+
+        # Next, add on a timestamp
+        if len(arguments) < 2:
+            arguments.append(time.time())
+            ts_conv = True
+
+        # Limit the argument list length
+        arguments = arguments[:2]
+
+    # OK, the command is all set up.  Let us now send the command...
+    if debug:
+        cmd = [command] + arguments
+        print >>sys.stderr, ("Issuing command: %s" %
+                             ' '.join(cmd))
+    database.command(db, control_channel, command, *arguments)
+
+    # Were we asked to listen on a channel?
+    if not channel:
+        return
+
+    # OK, let's subscribe to the channel...
+    pubsub = db.pubsub()
+    pubsub.subscribe(channel)
+
+    # Now we listen...
+    try:
+        count = 0
+        for msg in pubsub.listen():
+            # Make sure the message is one we're interested in
+            if debug:
+                formatted = pprint.pformat(msg)
+                print >>sys.stderr, "Received message: %s" % formatted
+            if (msg['type'] not in ('pmessage', 'message') or
+                    msg['channel'] != channel):
+                continue
+
+            count += 1
+
+            # Figure out the response
+            response = msg['data'].split(':')
+
+            # If this is a 'pong' and ts_conv is true, add an RTT to
+            # the response
+            if ts_conv and response[0] == 'pong':
+                try:
+                    rtt = (time.time() - float(response[2])) * 100
+                    response.append('(RTT %.2fms)' % rtt)
+                except Exception:
+                    # IndexError or ValueError, probably; ignore it
+                    pass
+
+            # Print out the response
+            print "Response % 5d: %s" % (count, ' '.join(response))
+    except KeyboardInterrupt:
+        # We want to break out of the loop, but not return any error
+        # to the caller...
+        pass
