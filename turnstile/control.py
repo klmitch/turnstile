@@ -188,10 +188,17 @@ class ControlDaemon(object):
                     LOG.error("Cannot call internal command %r" % command)
                     continue
 
-                # Don't do anything with missing commands
-                try:
+                # Look up the command
+                if command in self._commands:
                     func = self._commands[command]
-                except KeyError:
+                else:
+                    # Try an entrypoint
+                    func = utils.find_entrypoint('turnstile.command', command,
+                                                 compat=False)
+                    self._commands[command] = func
+
+                # Don't do anything with missing commands
+                if not func:
                     LOG.error("No such command %r" % command)
                     continue
 

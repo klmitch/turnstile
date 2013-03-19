@@ -19,6 +19,7 @@ import unittest2
 
 from turnstile import config
 from turnstile import control
+from turnstile import utils
 
 from tests.unit import utils as test_utils
 
@@ -158,10 +159,15 @@ class TestControlDaemon(unittest2.TestCase):
     @mock.patch.dict(control.ControlDaemon._commands, clear=True,
                      ping=mock.Mock(), _ping=mock.Mock(),
                      fail=mock.Mock(side_effect=test_utils.TestException))
+    @mock.patch.object(utils, 'find_entrypoint')
     @mock.patch.object(config.Config, 'get_database')
     @mock.patch.object(control.LOG, 'error')
     @mock.patch.object(control.LOG, 'exception')
-    def test_listen(self, mock_exception, mock_error, mock_get_database):
+    def test_listen(self, mock_exception, mock_error, mock_get_database,
+                    mock_find_entrypoint):
+        entrypoints = dict(discovered=mock.Mock())
+        mock_find_entrypoint.side_effect = (lambda x, y, compat:
+                                            entrypoints.get(y))
         pubsub = mock.Mock(**{'listen.return_value': [
             {
                 'type': 'other',
@@ -248,6 +254,26 @@ class TestControlDaemon(unittest2.TestCase):
                 'channel': 'control',
                 'data': 'ping:arg1:arg2',
             },
+            {
+                'type': 'pmessage',
+                'channel': 'control',
+                'data': 'discovered',
+            },
+            {
+                'type': 'message',
+                'channel': 'control',
+                'data': 'discovered',
+            },
+            {
+                'type': 'pmessage',
+                'channel': 'control',
+                'data': 'discovered:arg1:arg2',
+            },
+            {
+                'type': 'message',
+                'channel': 'control',
+                'data': 'discovered:arg1:arg2',
+            },
         ]})
         db = mock.Mock(**{'pubsub.return_value': pubsub})
         mock_get_database.return_value = db
@@ -288,15 +314,30 @@ class TestControlDaemon(unittest2.TestCase):
             mock.call(cd, 'arg1', 'arg2'),
             mock.call(cd, 'arg1', 'arg2'),
         ])
+        entrypoints['discovered'].assert_has_calls([
+            mock.call(cd),
+            mock.call(cd),
+            mock.call(cd, 'arg1', 'arg2'),
+            mock.call(cd, 'arg1', 'arg2'),
+        ])
+        mock_find_entrypoint.assert_has_calls([
+            mock.call('turnstile.command', 'nosuch', compat=False),
+            mock.call('turnstile.command', 'discovered', compat=False),
+        ])
+        self.assertEqual(len(mock_find_entrypoint.mock_calls), 2)
+        self.assertEqual(control.ControlDaemon._commands['discovered'],
+                         entrypoints['discovered'])
+        self.assertEqual(control.ControlDaemon._commands['nosuch'], None)
 
     @mock.patch.dict(control.ControlDaemon._commands, clear=True,
                      ping=mock.Mock(), _ping=mock.Mock(),
                      fail=mock.Mock(side_effect=test_utils.TestException))
+    @mock.patch.object(utils, 'find_entrypoint', return_value=None)
     @mock.patch.object(config.Config, 'get_database')
     @mock.patch.object(control.LOG, 'error')
     @mock.patch.object(control.LOG, 'exception')
     def test_listen_altchan(self, mock_exception, mock_error,
-                            mock_get_database):
+                            mock_get_database, mock_find_entrypoint):
         pubsub = mock.Mock(**{'listen.return_value': [
             {
                 'type': 'other',
@@ -406,6 +447,7 @@ class TestControlDaemon(unittest2.TestCase):
         ])
         self.assertFalse(control.ControlDaemon._commands['_ping'].called)
         self.assertFalse(control.ControlDaemon._commands['fail'].called)
+        self.assertFalse(mock_find_entrypoint.called)
 
     @mock.patch.object(config.Config, 'get_database')
     def test_listen_shardhint(self, mock_get_database):
