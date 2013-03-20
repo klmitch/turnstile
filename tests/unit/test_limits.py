@@ -213,6 +213,7 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, False)
         self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_rec, None)
         self.assertEqual(loader.last_summarize_ts, None)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
@@ -233,6 +234,7 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, False)
         self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_rec, None)
         self.assertEqual(loader.last_summarize_ts, None)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
@@ -254,6 +256,7 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, False)
         self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_rec, None)
         self.assertEqual(loader.last_summarize_ts, None)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
@@ -285,6 +288,7 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, False)
         self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_rec, None)
         self.assertEqual(loader.last_summarize_ts, None)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
@@ -294,7 +298,7 @@ class TestBucketLoader(unittest2.TestCase):
         records = [
             dict(update=dict(params='params0', time='time0')),
             dict(update=dict(params='params1', time='time1')),
-            dict(summarize=1000000.0),
+            dict(summarize=1000000.0, uuid='summarize_uuid'),
             dict(update=dict(params='params2', time='time2'), uuid='stop'),
             dict(bucket='a bucket'),
             dict(update=dict(params='params3', time='time3')),
@@ -317,6 +321,7 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, True)
         self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_rec, None)
         self.assertEqual(loader.last_summarize_ts, 1000000.0)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
@@ -328,9 +333,9 @@ class TestBucketLoader(unittest2.TestCase):
             dict(update=dict(params='params1', time='time1')),
             dict(update=dict(params='params2', time='time2'), uuid='stop'),
             dict(bucket='a bucket'),
-            dict(summarize=1000000.0),
+            dict(summarize=1000000.0, uuid='summarize1_uuid'),
             dict(update=dict(params='params3', time='time3')),
-            dict(summarize=1000010.0),
+            dict(summarize=1000010.0, uuid='summarize2_uuid'),
         ]
 
         loader = limits.BucketLoader(bucket_class, 'db', 'limit', 'key',
@@ -350,6 +355,7 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, True)
         self.assertEqual(loader.last_summarize_idx, None)
+        self.assertEqual(loader.last_summarize_rec, None)
         self.assertEqual(loader.last_summarize_ts, 1000010.0)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
@@ -358,11 +364,11 @@ class TestBucketLoader(unittest2.TestCase):
         bucket_class = mock.Mock(return_value=bucket)
         records = [
             dict(update=dict(params='params0', time='time0')),
-            dict(summarize=1000000.0),
+            dict(summarize=1000000.0, uuid='summarize1_uuid'),
             dict(update=dict(params='params1', time='time1')),
-            dict(summarize=1000010.0),
+            dict(summarize=1000010.0, uuid='summarize2_uuid'),
             dict(update=dict(params='params2', time='time2')),
-            dict(summarize=999990.0),
+            dict(summarize=999990.0, uuid='summarize3_uuid'),
             dict(update=dict(params='params3', time='time3')),
         ]
 
@@ -383,6 +389,8 @@ class TestBucketLoader(unittest2.TestCase):
         self.assertEqual(loader.delay, None)
         self.assertEqual(loader.summarized, True)
         self.assertEqual(loader.last_summarize_idx, 5)
+        self.assertEqual(loader.last_summarize_rec,
+                         dict(summarize=999990.0, uuid='summarize3_uuid'))
         self.assertEqual(loader.last_summarize_ts, 1000010.0)
 
     @mock.patch('msgpack.loads', side_effect=lambda x: x)
@@ -1604,7 +1612,7 @@ class TestLimit(unittest2.TestCase):
 
     @mock.patch('msgpack.dumps', side_effect=lambda x: x)
     @mock.patch('time.time', return_value=1000000.1)
-    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch('uuid.uuid4', side_effect=['update_uuid', 'summarize_uuid'])
     @mock.patch.object(limits, 'BucketLoader')
     @mock.patch.object(limits.Limit, 'filter', return_value=None)
     @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
@@ -1619,7 +1627,8 @@ class TestLimit(unittest2.TestCase):
         db = mock.Mock(**{
             'lrange.return_value': ['record1', 'record2'],
         })
-        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'],
+                             uuid='bucket_uuid')
         environ = {'turnstile.conf': dict(compactor=dict(max_updates='10'))}
         params = dict(param='test')
         result = limit._filter(environ, params)
@@ -1636,6 +1645,7 @@ class TestLimit(unittest2.TestCase):
             },
         }
         summarize_record = {
+            'uuid': 'summarize_uuid',
             'summarize': 1000000.1,
         }
 
@@ -1658,7 +1668,7 @@ class TestLimit(unittest2.TestCase):
 
     @mock.patch('msgpack.dumps', side_effect=lambda x: x)
     @mock.patch('time.time', return_value=1000000.1)
-    @mock.patch('uuid.uuid4', return_value='update_uuid')
+    @mock.patch('uuid.uuid4', side_effect=['update_uuid', 'summarize_uuid'])
     @mock.patch.object(limits, 'BucketLoader')
     @mock.patch.object(limits.Limit, 'filter', return_value=None)
     @mock.patch.object(limits.Limit, 'key', return_value='bucket_key')
@@ -1673,7 +1683,8 @@ class TestLimit(unittest2.TestCase):
         db = mock.Mock(**{
             'lrange.return_value': ['record1', 'record2'],
         })
-        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'])
+        limit = limits.Limit(db, uri='uri', value=10, unit=1, use=['param'],
+                             uuid='bucket_uuid')
         environ = {
             'turnstile.conf': {
                 'compactor': dict(max_updates='10', compactor_key='alt_key'),
@@ -1694,6 +1705,7 @@ class TestLimit(unittest2.TestCase):
             },
         }
         summarize_record = {
+            'uuid': 'summarize_uuid',
             'summarize': 1000000.1,
         }
 

@@ -279,6 +279,16 @@ class BucketLoader(object):
         of the last "summarize" record is used to ensure the insert
         and the trim cover the appropriate records.
 
+      last_summarize_rec
+        If not None, this is the raw, packed string representing the
+        last "summarize" record in the bucket representation.  The
+        compacting algorithm assembles a final bucket up to this last
+        "summarize" record, then inserts the full bucket after it; it
+        will then trim off all previous records, including this last
+        "summarize" record, to finish compacting the entry.  The
+        record text is needed to determine the location to insert the
+        compacted bucket record.
+
       last_summarize_ts
         If not None, this is the timestamp on the last "summarize"
         record in the bucket representation.  This is used to ensure
@@ -312,26 +322,28 @@ class BucketLoader(object):
         self.delay = None
         self.summarized = False
         self.last_summarize_idx = None
+        self.last_summarize_rec = None
         self.last_summarize_ts = None
 
         # Unpack the records
-        records = [msgpack.loads(rec) for rec in records]
+        unpacked = [msgpack.loads(rec) for rec in records]
 
         # If stop_summarize is set, we need to find the last summary
         # record
         if stop_summarize:
-            for i, rec in enumerate(reversed(records)):
+            for i, rec in enumerate(reversed(unpacked)):
                 # If it's a summarize record, store the index and
                 # timestamp of the record within the list
                 if 'summarize' in rec:
                     self.summarized = True
                     self.last_summarize_ts = rec['summarize']
                     self.last_summarize_idx = len(records) - i - 1
+                    self.last_summarize_rec = records[self.last_summarize_idx]
                     break
 
         # Now, build the bucket
         no_update = False
-        for i, rec in enumerate(records):
+        for i, rec in enumerate(unpacked):
             # Break out if we hit the last summary record
             if (self.last_summarize_idx is not None and
                     i == self.last_summarize_idx):
@@ -929,7 +941,7 @@ class Limit(object):
                 # maximum aging applied to summarize records will
                 # cause this logic to eventually be retriggered, which
                 # should allow the compactor instruction to be issued.
-                summarize = dict(summarize=now)
+                summarize = dict(summarize=now, uuid=str(uuid.uuid4()))
                 self.db.rpush(key, msgpack.dumps(summarize))
 
                 # Instruct the compactor to compact this record
