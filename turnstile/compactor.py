@@ -41,7 +41,7 @@ def version_greater(minimum, version):
 
     # Chop up the version strings
     minimum = [int(i) for i in minimum.split('.')]
-    version = [int(i) for i in minimum.split('.')]
+    version = [int(i) for i in version.split('.')]
 
     # Compare the versions element by element
     for mini, vers in zip(minimum, version):
