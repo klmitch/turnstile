@@ -183,7 +183,7 @@ class GetBucketKey(object):
                   sufficiently.
         """
 
-        raise NotImplementedError()
+        raise NotImplementedError()  # Pragma: nocover
 
 
 class GetBucketKeyByLock(GetBucketKey):
