@@ -310,10 +310,10 @@ class LimitContainer(object):
         self.limit_sum = None
 
         # Initialize the control daemon
-        if self.conf.to_bool(self.conf['control'].get('remote', 'no'), False):
-            self.control_daemon = remote.RemoteControlDaemon(self, self.conf)
+        if conf.to_bool(conf['control'].get('remote', 'no'), False):
+            self.control_daemon = remote.RemoteControlDaemon(self, conf)
         else:
-            self.control_daemon = control.ControlDaemon(self, self.conf)
+            self.control_daemon = control.ControlDaemon(self, conf)
 
         # Now start the control daemon
         self.control_daemon.start()
