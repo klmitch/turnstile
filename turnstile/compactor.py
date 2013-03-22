@@ -461,7 +461,7 @@ def compactor(conf):
             continue
 
         # Ignore version 1 keys--they can't be compacted
-        if buck_key.version == 1:
+        if buck_key.version < 2:
             continue
 
         # Get the corresponding limit class
