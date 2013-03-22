@@ -429,7 +429,7 @@ def compactor(conf):
     """
 
     # Get the database handle
-    db = config.get_database('compactor')
+    db = conf.get_database('compactor')
 
     # Get the limits container
     limit_map = LimitContainer(conf, db)
