@@ -164,8 +164,8 @@ class GetBucketKey(object):
 
             # If we didn't get one, idle
             LOG.debug("No buckets to compact; sleeping for %s seconds" %
-                      self.sleep)
-            time.sleep(self.sleep)
+                      self.idle_sleep)
+            time.sleep(self.idle_sleep)
 
     def get(self, now):
         """
