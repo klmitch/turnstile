@@ -406,7 +406,7 @@ def compact_bucket(db, buck_key, limit):
     # Were we successful?
     if result < 0:
         # Insert failed; we'll try again when max_age is hit
-        LOG.notice("Bucket compaction on %s failed; will retry" % buck_key)
+        LOG.warning("Bucket compaction on %s failed; will retry" % buck_key)
         return
 
     # OK, we have confirmed that the compacted bucket record has been
