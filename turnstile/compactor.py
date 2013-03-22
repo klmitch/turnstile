@@ -392,8 +392,8 @@ def compact_bucket(db, buck_key, limit):
 
     # Suck in the bucket records and generate our bucket
     records = db.lrange(str(buck_key), 0, -1)
-    loader = BucketLoader(limit.bucket_class, db, limit,
-                          str(buck_key), records, stop_summarize=True)
+    loader = limits.BucketLoader(limit.bucket_class, db, limit,
+                                 str(buck_key), records, stop_summarize=True)
 
     # We now have the bucket loaded in; generate a 'bucket' record
     buck_record = msgpack.dumps(dict(bucket=loader.bucket.dehydrate(),
