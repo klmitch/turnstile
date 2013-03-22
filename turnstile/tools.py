@@ -29,6 +29,7 @@ import eventlet
 from lxml import etree
 import msgpack
 
+from turnstile import compactor
 from turnstile import config
 from turnstile import database
 from turnstile import limits
@@ -764,3 +765,29 @@ def turnstile_command(conf_file, command, arguments=[], channel=None,
         # We want to break out of the loop, but not return any error
         # to the caller...
         pass
+
+
+@add_argument('conf_file',
+              metavar='config',
+              help="Name of the configuration file.")
+@add_argument('--log-config', '-l',
+              dest='logging',
+              action='store',
+              default=None,
+              help="Specify a logging configuration file.")
+@add_argument('--debug', '-d',
+              dest='debug',
+              action='store_true',
+              default=False,
+              help="Run the tool in debug mode.")
+@add_preprocessor(_setup_logging)
+def compactor_daemon(conf_file):
+    """
+    Run the compactor daemon.
+
+    :param conf_file: Name of the configuration file.
+    """
+
+    eventlet.monkey_patch()
+    conf = config.Config(conf_file=conf_file)
+    compactor.compactor(conf)

@@ -22,6 +22,7 @@ from lxml import etree
 import mock
 import unittest2
 
+from turnstile import compactor
 from turnstile import config
 from turnstile import database
 from turnstile import limits
@@ -791,6 +792,10 @@ class TestConsoleScripts(unittest2.TestCase):
     def test_turnstile_command(self):
         self.assertIsInstance(tools.turnstile_command, tools.ScriptAdaptor)
         self.assertGreater(len(tools.turnstile_command._arguments), 0)
+
+    def test_compactor_daemon(self):
+        self.assertIsInstance(tools.compactor_daemon, tools.ScriptAdaptor)
+        self.assertGreater(len(tools.compactor_daemon._arguments), 0)
 
 
 class TestSetupLimits(unittest2.TestCase):
@@ -1752,3 +1757,15 @@ class TestTurnstileCommand(unittest2.TestCase):
                          'Response     2: pong node\n'
                          'Response     3: pong  1000000.0\n'
                          'Response     4: pong node 1000000.0\n')
+
+
+class TestCompactorDaemon(unittest2.TestCase):
+    @mock.patch('eventlet.monkey_patch')
+    @mock.patch.object(config, 'Config', return_value=mock.Mock())
+    @mock.patch.object(compactor, 'compactor')
+    def test_basic(self, mock_compactor, mock_Config, mock_monkey_patch):
+        tools.compactor_daemon('conf_file')
+
+        mock_monkey_patch.assert_called_once_with()
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        mock_compactor.assert_called_once_with(mock_Config.return_value)

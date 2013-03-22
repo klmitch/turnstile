@@ -51,6 +51,7 @@ setup(
             'dump_limits = turnstile.tools:dump_limits.console',
             'remote_daemon = turnstile.tools:remote_daemon.console',
             'turnstile_command = turnstile.tools:turnstile_command.console',
+            'compactor_daemon = turnstile.tools:compactor.console',
         ],
     },
 )
