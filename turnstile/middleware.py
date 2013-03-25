@@ -213,8 +213,10 @@ class TurnstileMiddleware(object):
         # Set up the alternative formatter
         formatter = self.conf.get('formatter')
         if formatter:
-            self.formatter = utils.find_entrypoint('turnstile.formatter',
-                                                   formatter, required=True)
+            formatter = utils.find_entrypoint('turnstile.formatter',
+                                              formatter, required=True)
+            self.formatter = lambda a, b, c, d, e: formatter(
+                self.conf.status, a, b, c, d, e)
         else:
             self.formatter = self.format_delay
 
