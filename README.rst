@@ -598,6 +598,44 @@ for more information.
 The Compactor Daemon
 ====================
 
+This version of Turnstile includes scalability enhancements which
+change how bucket data is stored in the Redis database.  This
+eliminates the need for transactions--enabling various Redis
+clustering tools to be used--but at the cost of increased storage for
+the bucket data.  Buckets are now stored as lists of records; each
+request processed by Turnstile results in the addition of an "update"
+record to the bucket representation.  Then, to determine whether the
+request should be rate-limited, the bucket is reconstructed by
+applying all of the updates.
+
+To prevent this list of records from growing without bound, the rate
+limiting logic includes a mechanism for triggering the compaction of a
+bucket--many of these update records are compacted into a single
+"bucket" record.  This is triggered by setting a non-zero value for
+the ``compactor.max_updates`` configuration option.  When the number
+of update records exceeds this threshold, a signal will be sent to the
+compactor daemon, which performs the actual compaction algorithm.
+
+The compaction logic works by adding special "summarize" records to
+the bucket representation and placing the bucket's key into a special
+sorted set.  The compactor daemon allows these entries in the sorted
+set to age for a given period of time (under control of
+``compactor.min_age``). Although no new summarize records will be
+added to the bucket representation if one is already present, there is
+the potential for multiple Turnstile instances to add one
+simultaneously; this aging allows all Turnstile instances to see that
+a summarize request is in progress.
+
+Once a summarize request has aged sufficiently, the compactor daemon
+will perform the compaction and insert the resulting bucket back into
+the list representation.  It then eliminates the now-extraneous update
+records.
+
+If a summarize request is lost, due to a compactor daemon (or its
+host) crashing, the summarize records in the bucket representation
+have a maximum age as well; once the record exceeds its maximum age, a
+new summarize request will be generated.
+
 Turnstile Tools
 ===============
 
@@ -610,6 +648,29 @@ tools to make management of the rate limiting configuration easier.  A
 third tool starts up a remote control daemon, for use when Turnstile
 is used with applications that run multiple processes, such as the
 ``nova-api`` component of OpenStack.
+
+The ``compactor_daemon`` Tool
+-----------------------------
+
+The ``compactor_daemon`` tool may be used to start a compactor daemon
+process.  This tool requires the name of an INI-style configuration
+file; see the section on configuring the tools below for more
+information.
+
+A usage summary for ``compactor_daemon``::
+
+    usage: compactor_daemon [-h] [--log-config LOGGING] [--debug] config
+
+    Run the compactor daemon.
+
+    positional arguments:
+      config                Name of the configuration file.
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --log-config LOGGING, -l LOGGING
+                            Specify a logging configuration file.
+      --debug, -d           Run the tool in debug mode.
 
 The ``dump_limits`` Tool
 ------------------------
@@ -697,15 +758,45 @@ A usage summary for ``setup_limits``::
                             Cause all nodes to reload the limits configuration
                             over the specified number of seconds.
 
+The ``turnstile_command`` Tool
+------------------------------
+
+The ``turnstile_command`` tool may be used to send arbitrary commands
+to all running control daemons.  This tool requires the name of an
+INI-style configuration file; see the section on configuring the tools
+below for more information.
+
+A usage summary for ``turnstile_command``::
+
+    usage: turnstile_command [-h] [--listen CHANNEL] [--debug]
+                             config command [arguments [arguments ...]]
+
+    Issue a command to all running control daemons.
+
+    positional arguments:
+      config                Name of the configuration file.
+      command               The command to execute. Note that 'ping' is handled
+                            specially; in particular, the --listen parameter is
+                            implied.
+      arguments             The arguments to pass for the command. Note that the
+                            colon character (':') cannot be used.
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --listen CHANNEL, -l CHANNEL
+                            A channel to listen on for the command responses. Use
+                            C-c (or your systems keyboard interrupt sequence) to
+                            stop waiting for responses.
+      --debug, -d           Run the tool in debug mode.
+
 Configuring the Tools
 ---------------------
 
-The tools ``dump_limits``, ``remote_daemon``, and ``setup_limits``
-require an INI-style configuration file, which specifies how to
-connect to the Redis database.  This file should contain the section
-"[redis]" and should be populated with the same "redis.*" options as
-the PasteDeploy configuration file, minus the "redis." prefix.  For
-example::
+All of the tools require an INI-style configuration file, which
+specifies how to connect to the Redis database.  This file should
+contain the section "[redis]" and should be populated with the same
+"redis.*" options as the PasteDeploy configuration file, minus the
+"redis." prefix.  For example::
 
     [redis]
     host = <your Redis database host name or IP>
@@ -714,10 +805,10 @@ Each "redis.*" option recognized by the Turnstile middleware is
 understood by the tools.
 
 Additional options may be provided, such as the control channel,
-limits key, and the ``remote_daemon`` options.  The configuration file
-should be compatible with the alternate configuration file described
-under the ``config`` configuration option for the Turnstile
-middleware.
+limits key, and the ``compactor_daemon`` and ``remote_daemon``
+options.  The configuration file should be compatible with the
+alternate configuration file described under the ``config``
+configuration option for the Turnstile middleware.
 
 Rate Limit XML
 --------------
@@ -732,11 +823,13 @@ documented in the ``attrs`` attribute of the limit class.  (This
 information is suitable for introspection.)
 
 The ``<limit>`` element has one XML attribute which must be specified:
-the ``class`` attribute, which must be set to a "module:class" string
-identifying the desired limit class.  The ``<attr>`` element also has
-a single XML attribute which must be set: ``name``, which identifies
-the name of the Limit attribute.  The contents of the ``<attr>``
-element identify the value for the named attribute.
+the ``class`` attribute, which must identify the desired limit class.
+This value must be specified either as a "module:class" string, or a
+single name corresponding to a "turnstile.limit" entrypoint group.
+The ``<attr>`` element also has a single XML attribute which must be
+set: ``name``, which identifies the name of the Limit attribute.  The
+contents of the ``<attr>`` element identify the value for the named
+attribute.
 
 Some limit attributes are lists; for these attributes, the ``<attr>``
 element must contain one or more ``<value>`` elements, whose contents
@@ -825,5 +918,28 @@ numeric strings which evaluate to zero values.  Any other string value
 will cause ``to_bool()`` to raise a ``ValueError``, unless the
 ``do_raise`` argument is given as ``False``, in which case
 ``to_bool()`` will return a boolean ``False`` value.
+
+Determining User Buckets
+========================
+
+Some applications need to be able to inform the user of the next time
+they are able to make a call against a given URI, often as a part of
+listing the limits applying to that user.  This entails access to the
+bucket data for that user.  Under previous versions of Turnstile, this
+could only be accomplished by using the Redis "KEYS" command, which is
+most definitely not scalable.  A new feature in Turnstile allows
+preprocessors to add the name of a sorted set in the WSGI environment
+variable ``turnstile.bucket_set``; if this environment variable is set
+when a limit is processed, it will store the bucket key that was used
+into the named sorted set.  The score used for this will be the
+expiration time for the bucket, which can be used to eliminate entries
+for buckets that have expired from the database.
+
+Applications that have this requirement should implement both a
+preprocessor and a postprocessor; the preprocessor should set
+``turnstile.bucket_set`` to an appropriate value, and the
+postprocessor should trim off the outdated entries from the named
+sorted set and load the buckets, performing whatever processing is
+necessary to make the data available to the application.
 
 .. _PIP: http://www.pip-installer.org/en/latest/index.html
