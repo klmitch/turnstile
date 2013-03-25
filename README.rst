@@ -388,15 +388,135 @@ containing colons, to distinguish between the two formats.)
 The following entrypoint groups are recognized by Turnstile:
 
 turnstile.command
+  The control daemon accepts commands from remote callers.  One of
+  these commands is the "reload" command, which causes Turnstile to
+  reload the limits configuration from the Redis database.  A second
+  built-in command is the "ping" command, which can be used to ensure
+  all Turnstile instances are receiving command messages.  It is
+  possible to create additional commands by associating the command
+  string with a function under this entrypoint group.  The function
+  has the following signature::
+
+      def func(daemon, *args):
+          pass
+
+  The first argument will be the actual control daemon (which could be
+  either a ``turnstile.control.ControlDaemon`` or a
+  ``turnstile.remote.RemoteControlDaemon``); the remaining arguments
+  are the arguments passed to the command.  See the
+  ``turnstile-command`` tool for a way to submit arbitrary commands of
+  this form.
+
 turnstile.connection_class
+  The default Redis database client uses either a
+  ``redis.UnixDomainSocketConnection`` or a ``redis.Connection``
+  object to maintain the connection to the Redis database.  The
+  ``redis.connection_pool.connection_class`` configuration value
+  allows this default to be overridden.  Alternate classes will be
+  searched for in this entrypoint group, if there is no colon (":")
+  present in the configuration value.  See the documentation for
+  ``redis.Connection`` for details on this interface.
+
 turnstile.connection_pool
+  The default Redis database client maintains connections in a pool,
+  maintained as a ``redis.ConnectionPool`` object.  The
+  ``redis.connection_pool`` configuration value allows this default to
+  be overridden.  Alternate classes will be searched for in this
+  entrypoint group, if there is no colon (":") present in the
+  configuration value.  See the documentation for
+  ``redis.ConnectionPool`` for details on this interface.
+
 turnstile.formatter
+  When the rate limiting logic determines that the request is
+  rate-limited, Turnstile generates a response indicating that the
+  REST client should try again after a certain delay.  This response
+  can be formatted in any desired way by using the ``formatter``
+  configuration option to specify an alternate function, which will be
+  searched for under this entrypoint group.  The formatter function
+  has the following signature::
+
+      def formatter(status, delay, limit, bucket, environ, start_response):
+          pass
+
+  The ``status`` is the configured status code for this Turnstile
+  instance.  The ``delay`` is a float value, specifying the length of
+  the required delay in seconds.  The ``limit`` and ``bucket`` values
+  specify the actual underlying ``turnstile.limits.Limit`` and
+  ``turnstile.limits.Bucket`` subclasses associated with that delay;
+  alternate formatters can use the ``turnstile.limits.Limit.format()``
+  method to obtain a status and result entity specific for that limit.
+  Finally, ``environ`` and ``start_response`` come from the WSGI
+  pipeline; additional Turnstile configuration values can be retrieved
+  from the ``turnstile.conf`` key in ``environ``.
+
 turnstile.limit
+  The ``setup_limits`` tool reads the limits configuration from an XML
+  file.  In that file, each limit has an associated limit class,
+  specified by the "class" attribute of the ``<limit>`` element.  When
+  dumped using the ``dump_limits`` tool, this attribute will always be
+  a "module:class" pair, but ``setup_limits`` recognizes short names,
+  which will be searched for in this entrypoint group.  See the
+  documentation for ``turnstile.limits.Limit`` for details on this
+  interface.
+
 turnstile.middleware
+  Older versions of Turnstile allowed the formatter to be configured
+  by subclassing ``turnstile.middleware.TurnstileMiddleware`` and
+  overriding the ``format_delay()`` method.  Although this is now
+  deprecated, it is still possible, using the ``turnstile`` option in
+  the configuration, to specify a subclass of ``TurnstileMiddleware``
+  that ``turnstile.middleware.turnstile_filter()`` should use.  When
+  no colon (":") is present in the ``turnstile`` configuration value,
+  this is the entrypoint group that will be searched.  See the
+  documentation for ``TurnstileMiddleware`` for details on this
+  interface.
+
 turnstile.parser_class
+  The default Redis database client uses either a
+  ``redis.connection.PythonParser`` or a
+  ``redis.connection.HiredisParser`` object to parse the data stream
+  from the Redis database.  The ``redis.connection_pool.parser_class``
+  configuration value allows this default to be overridden.  Alternate
+  classes will be searched for in this entrypoint group, if there is
+  no colon (":") present in the configuration value.  See the
+  documentation for ``redis.connection.PythonParser`` for details on
+  this interface.
+
 turnstile.postprocessor
+  Postprocessors run immediately after searching all the limits and
+  verifying that the request should not be rate-limited.  (They will
+  not be run if the request is rate-limited.)  They can be specified
+  using either the ``postprocess`` or ``enable`` configuration
+  options.  The postprocessor function has the following signature::
+
+      def proc(middleware, environ)
+          pass
+
+  The first argument is the actual middleware object, from which the
+  configuration can be retrieved; the second argument is the WSGI
+  environment.
+
 turnstile.preprocessor
+  Preprocessors run immediately before searching all the limits.  They
+  can be specified using either the ``preprocess`` or ``enable``
+  configuration options.  The preprocessor function has the following
+  signature::
+
+      def proc(middleware, environ)
+          pass
+
+  The first argument is the actual middleware object, from which the
+  configuration can be retrieved; the second argument is the WSGI
+  environment.
+
 turnstile.redis_client
+  By default, Turnstile uses a ``redis.StrictRedis`` object to
+  communicate with the Redis database.  The ``redis.redis_client``
+  configuration value allows this default to be overridden.  Alternate
+  classes will be searched for in this entrypoint group, if there is
+  no colon (":") present in the configuration value.  See the
+  documentation for ``redis.StrictRedis`` for details on this
+  interface.
 
 The Control Daemon
 ==================
