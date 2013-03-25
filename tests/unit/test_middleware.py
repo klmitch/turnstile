@@ -191,12 +191,13 @@ class TestTurnstileMiddleware(unittest2.TestCase):
         ])
         mock_info.assert_called_once_with("Turnstile middleware initialized")
 
-    @mock.patch.object(utils, 'find_entrypoint', return_value='fake_formatter')
+    @mock.patch.object(utils, 'find_entrypoint', return_value=mock.Mock())
     @mock.patch.object(control, 'ControlDaemon')
     @mock.patch.object(remote, 'RemoteControlDaemon')
     @mock.patch.object(middleware.LOG, 'info')
     def test_init_formatter(self, mock_info, mock_RemoteControlDaemon,
                             mock_ControlDaemon, mock_find_entrypoint):
+        fake_formatter = mock_find_entrypoint.return_value
         midware = middleware.TurnstileMiddleware('app',
                                                  dict(formatter='formatter'))
 
@@ -217,13 +218,16 @@ class TestTurnstileMiddleware(unittest2.TestCase):
         self.assertEqual(midware.postprocessors, [])
         mock_find_entrypoint.assert_called_once_with(
             'turnstile.formatter', 'formatter', required=True)
-        self.assertEqual(midware.formatter, 'fake_formatter')
         self.assertFalse(mock_RemoteControlDaemon.called)
         mock_ControlDaemon.assert_has_calls([
             mock.call(midware, midware.conf),
             mock.call().start(),
         ])
         mock_info.assert_called_once_with("Turnstile middleware initialized")
+        midware.formatter('delay', 'limit', 'bucket', 'environ', 'start')
+        fake_formatter.assert_called_once_with(
+            '413 Request Entity Too Large', 'delay', 'limit', 'bucket',
+            'environ', 'start')
 
     @mock.patch.object(utils, 'find_entrypoint')
     @mock.patch.object(control, 'ControlDaemon')
