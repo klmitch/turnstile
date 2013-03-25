@@ -53,5 +53,11 @@ setup(
             'turnstile_command = turnstile.tools:turnstile_command.console',
             'compactor_daemon = turnstile.tools:compactor.console',
         ],
+        'turnstile.limit': [
+            'limit = turnstile.limits:Limit',
+        ],
+        'turnstile.middleware': [
+            'turnstile = turnstile.middleware:TurnstileMiddleware',
+        ],
     },
 )
