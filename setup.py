@@ -23,7 +23,7 @@ def readfile(filename):
 
 setup(
     name='turnstile',
-    version='0.7.0a2',
+    version='0.7.0a3',
     author='Kevin L. Mitchell',
     author_email='kevin.mitchell@rackspace.com',
     url='https://github.com/klmitch/turnstile',
