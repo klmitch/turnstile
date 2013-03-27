@@ -799,8 +799,11 @@ class Limit(object):
         # If the key is a version 1 key, load it straight from the
         # database
         if key.version == 1:
-            raw = msgpack.loads(self.db.get(str(key)))
-            return self.bucket_class.hydrate(self.db, raw, self, str(key))
+            raw = self.db.get(str(key))
+            if raw is None:
+                return self.bucket_class(self.db, self, str(key))
+            return self.bucket_class.hydrate(self.db, msgpack.loads(raw),
+                                             self, str(key))
 
         # OK, use a BucketLoader
         records = self.db.lrange(str(key), 0, -1)
