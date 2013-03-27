@@ -88,6 +88,7 @@ class TestScriptAdaptor(unittest2.TestCase):
 
         self.assertEqual(sa._func, func)
         self.assertEqual(sa._preprocess, [])
+        self.assertEqual(sa._postprocess, [])
         self.assertEqual(sa._arguments, [])
         self.assertEqual(sa.description, 'this is a test')
 
@@ -100,6 +101,7 @@ class TestScriptAdaptor(unittest2.TestCase):
         self.assertIsInstance(sa, tools.ScriptAdaptor)
         self.assertEqual(sa._func, func)
         self.assertEqual(sa._preprocess, [])
+        self.assertEqual(sa._postprocess, [])
         self.assertEqual(sa._arguments, [])
         self.assertEqual(sa.description, 'this is a test')
         mock_update_wrapper.assert_called_once_with(sa, func)
@@ -114,6 +116,7 @@ class TestScriptAdaptor(unittest2.TestCase):
         self.assertEqual(sa, result)
         self.assertEqual(sa._func, func)
         self.assertEqual(sa._preprocess, [])
+        self.assertEqual(sa._postprocess, [])
         self.assertEqual(sa._arguments, [])
         self.assertEqual(sa.description, 'this is a test')
         self.assertFalse(mock_update_wrapper.called)
@@ -149,6 +152,18 @@ class TestScriptAdaptor(unittest2.TestCase):
         self.assertEqual(sa._preprocess, [
             'preproc2',
             'preproc1',
+        ])
+
+    def test_add_postprocessor(self):
+        func = mock.Mock(__doc__='')
+        sa = tools.ScriptAdaptor(func)
+
+        sa._add_postprocessor('postproc1')
+        sa._add_postprocessor('postproc2')
+
+        self.assertEqual(sa._postprocess, [
+            'postproc2',
+            'postproc1',
         ])
 
     def test_setup_args(self):
@@ -264,10 +279,11 @@ class TestScriptAdaptor(unittest2.TestCase):
         func = mock.Mock(__doc__='\n    this is\n     a test\n\n    of this')
         sa = tools.ScriptAdaptor(func)
         sa._preprocess = [mock.Mock(), mock.Mock()]
+        sa._postprocess = [mock.Mock(return_value='postprocessed')]
 
         result = sa.console()
 
-        self.assertEqual(result, 'result')
+        self.assertEqual(result, 'postprocessed')
         mock_ArgumentParser.assert_called_once_with(
             description='this is a test')
         mock_setup_args.assert_called_once_with(
@@ -278,6 +294,7 @@ class TestScriptAdaptor(unittest2.TestCase):
         mock_get_kwargs.assert_called_once_with('parsed args')
         mock_safe_call.assert_called_once_with(
             dict(a=1, b=2, c=3), 'parsed args')
+        sa._postprocess[0].assert_called_once_with('parsed args', 'result')
 
 
 class TestAddArgument(unittest2.TestCase):
@@ -310,6 +327,22 @@ class TestAddPreprocessor(unittest2.TestCase):
         mock_wrap.assert_called_once_with('func')
         mock_wrap.return_value._add_preprocessor.assert_called_once_with(
             'preproc')
+
+
+class TestAddPostprocessor(unittest2.TestCase):
+    @mock.patch.object(tools.ScriptAdaptor, '_wrap', return_value=mock.Mock())
+    def test_decorator(self, mock_wrap):
+        decorator = tools.add_postprocessor('postproc')
+
+        self.assertTrue(callable(decorator))
+        self.assertFalse(mock_wrap.called)
+
+        result = decorator('func')
+
+        self.assertEqual(result, mock_wrap.return_value)
+        mock_wrap.assert_called_once_with('func')
+        mock_wrap.return_value._add_postprocessor.assert_called_once_with(
+            'postproc')
 
 
 class TestSetupLogging(unittest2.TestCase):
