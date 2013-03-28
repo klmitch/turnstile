@@ -296,6 +296,61 @@ class TestScriptAdaptor(unittest2.TestCase):
             dict(a=1, b=2, c=3), 'parsed args')
         sa._postprocess[0].assert_called_once_with('parsed args', 'result')
 
+    @mock.patch.object(argparse, 'ArgumentParser', return_value=mock.Mock(**{
+        'parse_args.return_value': 'parsed args',
+    }))
+    @mock.patch.object(tools.ScriptAdaptor, 'setup_args')
+    @mock.patch.object(tools.ScriptAdaptor, 'safe_call', return_value='result')
+    @mock.patch.object(tools.ScriptAdaptor, 'get_kwargs',
+                       return_value=dict(a=1, b=2, c=3))
+    def test_console_failed_preproc(self, mock_get_kwargs, mock_safe_call,
+                                    mock_setup_args, mock_ArgumentParser):
+        func = mock.Mock(__doc__='\n    this is\n     a test\n\n    of this')
+        sa = tools.ScriptAdaptor(func)
+        sa._preprocess = [
+            mock.Mock(side_effect=test_utils.TestException("badness")),
+        ]
+
+        result = sa.console()
+
+        self.assertEqual(result, 'badness')
+        mock_ArgumentParser.assert_called_once_with(
+            description='this is a test')
+        mock_setup_args.assert_called_once_with(
+            mock_ArgumentParser.return_value)
+        mock_ArgumentParser.return_value.parse_args.assert_called_once_with()
+        sa._preprocess[0].assert_called_once_with('parsed args')
+        self.assertFalse(mock_get_kwargs.called)
+        self.assertFalse(mock_safe_call.called)
+
+    @mock.patch.object(argparse, 'ArgumentParser', return_value=mock.Mock(**{
+        'parse_args.return_value': mock.Mock(debug=True),
+    }))
+    @mock.patch.object(tools.ScriptAdaptor, 'setup_args')
+    @mock.patch.object(tools.ScriptAdaptor, 'safe_call', return_value='result')
+    @mock.patch.object(tools.ScriptAdaptor, 'get_kwargs',
+                       return_value=dict(a=1, b=2, c=3))
+    def test_console_failed_preproc_debug(self, mock_get_kwargs,
+                                          mock_safe_call, mock_setup_args,
+                                          mock_ArgumentParser):
+        func = mock.Mock(__doc__='\n    this is\n     a test\n\n    of this')
+        sa = tools.ScriptAdaptor(func)
+        sa._preprocess = [
+            mock.Mock(side_effect=test_utils.TestException("badness")),
+        ]
+
+        self.assertRaises(test_utils.TestException, sa.console)
+
+        mock_ArgumentParser.assert_called_once_with(
+            description='this is a test')
+        mock_setup_args.assert_called_once_with(
+            mock_ArgumentParser.return_value)
+        mock_ArgumentParser.return_value.parse_args.assert_called_once_with()
+        sa._preprocess[0].assert_called_once_with(
+            mock_ArgumentParser.return_value.parse_args.return_value)
+        self.assertFalse(mock_get_kwargs.called)
+        self.assertFalse(mock_safe_call.called)
+
 
 class TestAddArgument(unittest2.TestCase):
     @mock.patch.object(tools.ScriptAdaptor, '_wrap', return_value=mock.Mock())

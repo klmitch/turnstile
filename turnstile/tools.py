@@ -221,7 +221,12 @@ class ScriptAdaptor(object):
 
         # Next, let's run the preprocessors in order
         for proc in self._preprocess:
-            proc(args)
+            try:
+                proc(args)
+            except Exception as exc:
+                if getattr(args, 'debug', False):
+                    raise
+                return str(exc)
 
         # Finally, safely call the underlying function
         result = self.safe_call(self.get_kwargs(args), args)
