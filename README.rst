@@ -942,4 +942,68 @@ postprocessor should trim off the outdated entries from the named
 sorted set and load the buckets, performing whatever processing is
 necessary to make the data available to the application.
 
+Backwards Compatibility and Interoperability
+============================================
+
+This version of Turnstile includes several enhancements, such as the
+addition of postprocessors and the ``enable`` configuration value.
+For the vast majority of these enhancements, backwards compatibility
+has been preserved; if you see an issue caused by lack of backwards
+compatibility, please log it as a bug.
+
+There are, however, several features that have been deprecated in
+previous versions of Turnstile which are now removed; these are listed
+below:
+
+* The special treatment of the ``[connection]`` section of the
+  configuration is removed; users should use the options in the
+  ``[redis]`` and ``[control]`` sections.
+* The ``turnstile.config`` variable in the WSGI environment is
+  removed; users should use the ``turnstile.conf`` variable instead.
+* The ``config`` property of the middleware object is removed; users
+  should use the ``conf`` attribute instead.
+* The ``import_class()`` function of ``turnstile.utils`` is removed;
+  users should use the ``find_entrypoint()`` function instead.
+* The ``TurnstileRedis`` class of ``turnstile.database`` is removed,
+  along with its ``safe_update()``, ``limit_update()``, and
+  ``command()`` methods.  The latter two have been replaced by
+  ``limit_update()`` and ``command()`` functions declared in the
+  ``turnstile.database`` module.  There is no replacement for
+  ``safe_update()``.
+
+The following features have been deprecated and will be removed in
+future versions of Turnstile:
+
+* Overriding the ``TurnstileMiddleware`` class with the ``turnstile``
+  configuration option is deprecated; users should use the
+  ``formatter`` option to override delay formatting.
+* The ``decode()`` method of ``Limit`` classes is deprecated.  Use the
+  ``BucketKey`` class in ``turnstile.limits`` to decode bucket keys.
+* Except for the ``setup_limits`` tool's XML input file, the
+  specification of functions and classes using "module:function" or
+  "module:class" syntax is deprecated; Turnstile is moving to a
+  ``pkg_resources`` entrypoint-based approach.  See the section on
+  entrypoints above for more information.
+
+Interoperability with Older Versions of Turnstile
+-------------------------------------------------
+
+This version of Turnstile is not completely interoperable with older
+versions of Turnstile.  Care has been taken to ensure that both new
+and old instances of Turnstile can run against the same database;
+however, the old versions cannot load bucket data from new versions
+and vice versa.  Thus, users should only be running both versions
+during a transitional period; avoid running both versions for an
+extended period of time.
+
+The bucket storage format has changed; the new format enhances
+Turnstile's scalability by eliminating the use of transactions when
+storing bucket data.  To allow for a phased transition to a new
+version of Turnstile, the bucket keys have also changed.  The result
+of this is that rate-limits are applied to users hitting the new
+version of Turnstile independently of those applied to users hitting
+the old version.  This means that a user may be able to make twice as
+many requests as permitted by the rate limits.  An expedited
+transition to the new version of Turnstile will address this problem.
+
 .. _PIP: http://www.pip-installer.org/en/latest/index.html
