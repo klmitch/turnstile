@@ -608,7 +608,7 @@ def make_limit_node(root, limit):
               "to the Redis database.")
 @add_argument('limits_file',
               help="Name of the XML file that the limits will be "
-              "dumped to. Use '-' for stdout.")
+              "dumped to.  Use '-' for stdout.")
 @add_argument('--debug', '-d',
               dest='debug',
               action='store_true',
@@ -621,7 +621,7 @@ def dump_limits(conf_file, limits_file, debug=False):
     :param conf_file: Name of the configuration file, for connecting
                       to the Redis database.
     :param limits_file: Name of the XML file that the limits will be
-                        dumped to.  Use '-' to dump to stdout
+                        dumped to.  Use '-' to dump to stdout.
     :param debug: If True, debugging messages are emitted while
                   dumping the limits.
     """

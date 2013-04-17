@@ -1814,13 +1814,12 @@ class TestLimit(unittest2.TestCase):
     def test_unit_value_set_timeunit(self):
         limit = limits.Limit('db', uri='uri', value=10, unit="second")
         
-        #both limit.unit and limit.unit_value set limit._unit.  Verify both
+        # both limit.unit and limit.unit_value set limit._unit.  Verify both
         # accept a TimeUnit
         limit.unit = limits.TimeUnit(3600)
         self.assertEqual(int(limit._unit), 3600)
         limit.unit_value = limits.TimeUnit(1800)
         self.assertEqual(int(limit._unit), 1800)
-
 
     def test_unit_value_set_zero(self):
         limit = limits.Limit('db', uri='uri', value=10, unit=1)
