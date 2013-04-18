@@ -1284,6 +1284,7 @@ class TestSetupLimits(unittest2.TestCase):
 
 
 class TestDumpLimits(unittest2.TestCase):
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
     @mock.patch.object(sys, 'stderr', StringIO.StringIO())
     @mock.patch('lxml.etree.Element', return_value=mock.Mock())
     @mock.patch('lxml.etree.ElementTree', return_value=mock.Mock())
@@ -1308,7 +1309,6 @@ class TestDumpLimits(unittest2.TestCase):
         root = mock_Element.return_value
         limit_tree = mock_ElementTree.return_value
 
-        stdout = sys.stdout = StringIO.StringIO()
         tools.dump_limits('conf_file', '-')
 
         mock_Config.assert_called_once_with(conf_file='conf_file')
