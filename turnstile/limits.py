@@ -1051,7 +1051,10 @@ class Limit(object):
         number of seconds, or one of the recognized unit names.
         """
 
-        self._unit = TimeUnit(value)
+        if isinstance(value, TimeUnit):
+            self._unit = value
+        else:
+            self._unit = TimeUnit(value)
 
     @property
     def unit_value(self):
@@ -1070,7 +1073,10 @@ class Limit(object):
         number of seconds, or one of the recognized unit names.
         """
 
-        self._unit = TimeUnit(value)
+        if isinstance(value, TimeUnit):
+            self._unit = value
+        else:
+            self._unit = TimeUnit(value)
 
     @property
     def cost(self):

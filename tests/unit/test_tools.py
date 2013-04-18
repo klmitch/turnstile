@@ -1284,6 +1284,58 @@ class TestSetupLimits(unittest2.TestCase):
 
 
 class TestDumpLimits(unittest2.TestCase):
+    @mock.patch.object(sys, 'stdout', StringIO.StringIO())
+    @mock.patch.object(sys, 'stderr', StringIO.StringIO())
+    @mock.patch('lxml.etree.Element', return_value=mock.Mock())
+    @mock.patch('lxml.etree.ElementTree', return_value=mock.Mock())
+    @mock.patch('msgpack.loads', side_effect=lambda x: x)
+    @mock.patch.object(config, 'Config', return_value=mock.MagicMock(**{
+        'get_database.return_value': mock.Mock(**{
+            'zrange.return_value': [
+                'limit0',
+                'limit1',
+                'limit2',
+            ],
+        })}))
+    @mock.patch.object(limits.Limit, 'hydrate', side_effect=lambda x, y: y)
+    @mock.patch.object(tools, 'make_limit_node')
+    def test_basic_stdout(self, mock_make_limit_node, mock_hydrate,
+                          mock_Config, mock_loads, mock_ElementTree,
+                          mock_Element):
+        # test that calling dump_limits with '-' (writing to stdout) works
+        conf = mock_Config.return_value
+        conf.__getitem__.return_value = {}
+        db = conf.get_database.return_value
+        root = mock_Element.return_value
+        limit_tree = mock_ElementTree.return_value
+
+        tools.dump_limits('conf_file', '-')
+
+        mock_Config.assert_called_once_with(conf_file='conf_file')
+        conf.get_database.assert_called_once_with()
+        db.zrange.assert_called_once_with('limits', 0, -1)
+        mock_loads.assert_has_calls([
+            mock.call('limit0'),
+            mock.call('limit1'),
+            mock.call('limit2'),
+        ])
+        mock_hydrate.assert_has_calls([
+            mock.call(db, 'limit0'),
+            mock.call(db, 'limit1'),
+            mock.call(db, 'limit2'),
+        ])
+        mock_Element.assert_called_once_with('limits')
+        mock_ElementTree.assert_called_once_with(root)
+        mock_make_limit_node.assert_has_calls([
+            mock.call(root, 'limit0'),
+            mock.call(root, 'limit1'),
+            mock.call(root, 'limit2'),
+        ])
+        limit_tree.write.assert_called_once_with(
+            sys.stdout, xml_declaration=True, encoding='UTF-8',
+            pretty_print=True)
+        self.assertEqual(sys.stderr.getvalue(), '')
+
     @mock.patch.object(sys, 'stderr', StringIO.StringIO())
     @mock.patch('lxml.etree.Element', return_value=mock.Mock())
     @mock.patch('lxml.etree.ElementTree', return_value=mock.Mock())
