@@ -156,12 +156,12 @@ class TestGetBucketKey(unittest2.TestCase):
 
         self.assertEqual(result, 'bucket1')
         self.assertEqual(mock_time.call_count, 3)
-        db.zrembyscore.assert_has_calls([
+        db.zremrangebyscore.assert_has_calls([
             mock.call('compactor', 0, 999400.0),
             mock.call('compactor', 0, 999405.0),
             mock.call('compactor', 0, 999410.0),
         ])
-        self.assertEqual(db.zrembyscore.call_count, 3)
+        self.assertEqual(db.zremrangebyscore.call_count, 3)
         mock_get.assert_has_calls([
             mock.call(1000000.0),
             mock.call(1000005.0),

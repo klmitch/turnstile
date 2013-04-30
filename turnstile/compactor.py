@@ -156,7 +156,7 @@ class GetBucketKey(object):
             # Drop all items older than max_age; they're no longer
             # quiesced, since the compactor logic will cause new
             # summarize records to be generated.  No lock is needed...
-            self.db.zrembyscore(self.key, 0, now - self.max_age)
+            self.db.zremrangebyscore(self.key, 0, now - self.max_age)
 
             # Get an item and return it
             item = self.get(now)
