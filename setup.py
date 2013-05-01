@@ -53,6 +53,16 @@ setup(
             'turnstile_command = turnstile.tools:turnstile_command.console',
             'compactor_daemon = turnstile.tools:compactor.console',
         ],
+        'turnstile.redis_client': [
+            'redis = redis:StrictRedis',
+        ],
+        'turnstile.connection_class': [
+            'redis = redis:Connection',
+            'unix_domain = redis:UnixDomainSocketConnection',
+        ],
+        'turnstile.connection_pool': [
+            'redis = redis:ConnectionPool',
+        ],
         'turnstile.limit': [
             'limit = turnstile.limits:Limit',
         ],
