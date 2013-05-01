@@ -215,7 +215,11 @@ class Config(object):
             for key, value in self[override].items():
                 if not key.startswith('redis.'):
                     continue
-                redis_args[key[len('redis.'):]] = value
+                key = key[len('redis.'):]
+                if value:
+                    redis_args[key] = value
+                else:
+                    redis_args.pop(key, None)
 
         # Return the redis database connection
         return database.initialize(redis_args)

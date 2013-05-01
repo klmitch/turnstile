@@ -233,6 +233,7 @@ class TestConfig(unittest2.TestCase):
             'control.redis.host': '10.0.0.11',
             'control.redis.port': '1234',
             'control.redis.password': 'passspam',
+            'control.redis.db': '',
         }
         cfg = config.Config(conf_dict=local_conf)
 
@@ -243,7 +244,6 @@ class TestConfig(unittest2.TestCase):
             'host': '10.0.0.11',
             'port': '1234',
             'password': 'passspam',
-            'db': '3',
         })
         self.assertEqual(cfg._config, {
             None: {
@@ -259,6 +259,7 @@ class TestConfig(unittest2.TestCase):
                 'redis.host': '10.0.0.11',
                 'redis.password': 'passspam',
                 'redis.port': '1234',
+                'redis.db': '',
             },
         })
 
