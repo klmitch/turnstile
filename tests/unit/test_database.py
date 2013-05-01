@@ -97,6 +97,7 @@ class TestInitialize(unittest2.TestCase):
             'password': 'spampass',
             'socket_timeout': '600',
             'unix_socket_path': '/tmp/redis',
+            'extra_config': 'extra_value',
         })
 
         self.assertEqual(result, 'db_handle')
@@ -108,6 +109,7 @@ class TestInitialize(unittest2.TestCase):
             password='spampass',
             socket_timeout=600,
             unix_socket_path='/tmp/redis',
+            extra_config='extra_value',
         )
 
     @mock.patch.object(redis, 'StrictRedis', return_value='db_handle')

@@ -20,6 +20,18 @@ from turnstile import limits
 from turnstile import utils
 
 
+REDIS_CONFIGS = {
+    'host': str,
+    'port': int,
+    'db': int,
+    'password': str,
+    'socket_timeout': int,
+    'unix_socket_path': str,
+}
+
+REDIS_EXCLUDES = set(['connection_pool', 'redis_client'])
+
+
 def initialize(config):
     """
     Initialize a connection to the Redis database.
@@ -34,9 +46,7 @@ def initialize(config):
 
     # Extract relevant connection information from the configuration
     kwargs = {}
-    for cfg_var, type_ in [('host', str), ('port', int), ('db', int),
-                           ('password', str), ('socket_timeout', int),
-                           ('unix_socket_path', str)]:
+    for cfg_var, type_ in REDIS_CONFIGS.items():
         if cfg_var in config:
             kwargs[cfg_var] = type_(config[cfg_var])
 
@@ -47,6 +57,7 @@ def initialize(config):
     # Look up the connection pool configuration
     cpool_class = None
     cpool = {}
+    extra_kwargs = {}
     for key, value in config.items():
         if key.startswith('connection_pool.'):
             _dummy, _sep, varname = key.partition('.')
@@ -60,6 +71,8 @@ def initialize(config):
                     'turnstile.parser_class', value, required=True)
             else:
                 cpool[varname] = value
+        elif key not in REDIS_CONFIGS and key not in REDIS_EXCLUDES:
+            extra_kwargs[key] = value
     if cpool:
         cpool_class = redis.ConnectionPool
 
@@ -94,6 +107,7 @@ def initialize(config):
         kwargs = dict(connection_pool=cpool_class(**cpool))
 
     # Build and return the database
+    kwargs.update(extra_kwargs)
     return client(**kwargs)
 
 
